@@ -14,6 +14,7 @@
 
 """Layer 1 API for Antigravity SDK."""
 
+from collections.abc import Sequence
 import contextlib
 import logging
 from typing import cast
@@ -167,7 +168,26 @@ class Agent:
 
     Returns:
         The final response from the agent.
+
+    Raises:
+        ValueError: If prompt is None, an empty or whitespace-only string, or an
+          empty sequence / sequence containing only empty or whitespace strings.
     """
+    if prompt is None or (isinstance(prompt, str) and not prompt.strip()):
+      raise ValueError(
+          f"chat() requires a non-empty message string. Got: {prompt!r}"
+      )
+    if (
+        isinstance(prompt, Sequence)
+        and not isinstance(prompt, str)
+        and (
+            not prompt
+            or all(isinstance(p, str) and not p.strip() for p in prompt)
+        )
+    ):
+      raise ValueError(
+          f"chat() requires non-empty message content. Got: {prompt!r}"
+      )
     return await self.conversation.chat(prompt)
 
   @property

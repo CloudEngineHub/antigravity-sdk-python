@@ -114,6 +114,40 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
       "local.local_connection.LocalConnectionStrategy"
   )
   @mock.patch.object(conversation.Conversation, "create")
+  async def test_agent_chat_empty_input_raises_value_error(
+      self, mock_conv_create, mock_strategy_class
+  ):
+    mock_strategy_instance = mock_strategy_class.return_value
+    mock_strategy_instance.stop = mock.AsyncMock()
+
+    mock_conversation = mock.MagicMock(spec=conversation.Conversation)
+    mock_cm = mock.AsyncMock()
+    mock_cm.__aenter__.return_value = mock_conversation
+    mock_conv_create.return_value = mock_cm
+
+    config = local_connection.LocalAgentConfig(system_instructions="test")
+    async with agent.Agent(config) as ag:
+      with self.assertRaisesRegex(ValueError, "non-empty message string"):
+        await ag.chat(None)
+      with self.assertRaisesRegex(ValueError, "non-empty message string"):
+        await ag.chat("")
+      with self.assertRaisesRegex(ValueError, "non-empty message string"):
+        await ag.chat("   ")
+      with self.assertRaisesRegex(ValueError, "non-empty message content"):
+        await ag.chat([])
+      with self.assertRaisesRegex(ValueError, "non-empty message content"):
+        await ag.chat(["", "   "])
+      with self.assertRaisesRegex(ValueError, "non-empty message content"):
+        await ag.chat(())
+      with self.assertRaisesRegex(ValueError, "non-empty message content"):
+        await ag.chat(("", "   "))
+      mock_conversation.chat.assert_not_called()
+
+  @mock.patch(
+      "google.antigravity.connections."
+      "local.local_connection.LocalConnectionStrategy"
+  )
+  @mock.patch.object(conversation.Conversation, "create")
   async def test_agent_default_capabilities(
       self, mock_conv_create, mock_strategy_class
   ):
