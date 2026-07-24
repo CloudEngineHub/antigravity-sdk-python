@@ -991,7 +991,12 @@ SUPPORTED_DOCUMENT_MIMES = frozenset({
 
 SUPPORTED_AUDIO_MIMES = frozenset({
     "audio/wav",
+    "audio/x-wav",
+    "audio/wave",
+    "audio/vnd.wave",
     "audio/mp3",
+    "audio/mp4",
+    "audio/webm",
     "audio/aac",
     "audio/ogg",
     "audio/flac",

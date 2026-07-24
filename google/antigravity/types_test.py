@@ -778,7 +778,7 @@ class ImageTest(unittest.TestCase):
         types.Image.from_file(tmp_file)
 
 
-class AudioTest(unittest.TestCase):
+class AudioTest(parameterized.TestCase):
   """Validates the Audio content attachment primitive and its validators."""
 
   def test_basic_construction(self):
@@ -786,6 +786,27 @@ class AudioTest(unittest.TestCase):
     audio = types.Audio(data=b"mp3_data", mime_type="audio/mp3")
     self.assertEqual(audio.data, b"mp3_data")
     self.assertEqual(audio.mime_type, "audio/mp3")
+
+  @parameterized.parameters(
+      "audio/wav",
+      "audio/x-wav",
+      "audio/wave",
+      "audio/vnd.wave",
+      "audio/mp3",
+      "audio/mp4",
+      "audio/webm",
+      "audio/aac",
+      "audio/ogg",
+      "audio/flac",
+      "audio/opus",
+      "audio/mpeg",
+      "audio/m4a",
+      "audio/l16",
+  )
+  def test_supported_mime_types(self, mime_type: str):
+    """Verifies that all supported Audio MIME types pass validation."""
+    audio = types.Audio(data=b"sample_data", mime_type=mime_type)
+    self.assertEqual(audio.mime_type, mime_type)
 
   def test_unsupported_mime_type_raises(self):
     """Verifies that an unsupported Audio MIME type triggers ValidationError."""
