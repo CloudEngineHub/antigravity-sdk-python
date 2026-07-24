@@ -225,6 +225,10 @@ class LiteRTConnectionStrategy(LocalOpenAIConnectionStrategy):
           audio_backend=engine_audio,
           vision_backend=engine_vision,
           max_num_tokens=self._max_context_tokens,
+          # Since the Engine is used in a stateless OpenAI server, we can enable
+          # "use_ringbuffers_local_attention" to support larger context length
+          # with limited memory.
+          use_ringbuffers_local_attention=True,
       )
       self._engine_context = self._engine.__enter__()
 
