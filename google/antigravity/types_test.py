@@ -574,6 +574,7 @@ class BuiltinToolsTest(parameterized.TestCase):
   @parameterized.named_parameters(
       ("list_dir", types.BuiltinTools.LIST_DIR, "list_directory"),
       ("search_dir", types.BuiltinTools.SEARCH_DIR, "search_directory"),
+      ("find_file", types.BuiltinTools.FIND_FILE, "find_file"),
       ("view_file", types.BuiltinTools.VIEW_FILE, "view_file"),
       ("create_file", types.BuiltinTools.CREATE_FILE, "create_file"),
       ("edit_file", types.BuiltinTools.EDIT_FILE, "edit_file"),
@@ -587,6 +588,7 @@ class BuiltinToolsTest(parameterized.TestCase):
       ),
       ("start_subagent", types.BuiltinTools.START_SUBAGENT, "start_subagent"),
       ("generate_image", types.BuiltinTools.GENERATE_IMAGE, "generate_image"),
+      ("finish", types.BuiltinTools.FINISH, "finish"),
   )
   def test_enum_values(self, enum_member, expected_value):
     """Verifies each enum member has the expected string value."""
