@@ -247,6 +247,31 @@ class ToolRunnerTest(absltest.TestCase):
     result = asyncio.run(runner.execute("sync_callable", arg1="World"))
     self.assertEqual(result, "Callable World")
 
+  def test_register_callable_object_no_name(self):
+    """Verifies registering a callable object without name uses class name."""
+
+    class SyncCallable:
+
+      def __call__(self, arg1: str) -> str:
+        return f"Callable {arg1}"
+
+    tool = SyncCallable()
+    runner = tool_runner.ToolRunner()
+    runner.register(tool)
+    self.assertEqual(runner.tool_names, ["SyncCallable"])
+
+  def test_tool_with_schema_no_name(self):
+    """Verifies ToolWithSchema handles callable object without __name__."""
+
+    class SyncCallable:
+
+      def __call__(self, arg1: str) -> str:
+        return f"Callable {arg1}"
+
+    tool = SyncCallable()
+    wrapped = tool_runner.ToolWithSchema(tool, {"type": "object"})
+    self.assertEqual(wrapped.__name__, "SyncCallable")
+
   def test_coerce_args_basic_types(self):
     """Verifies that _coerce_args converts strings to basic Python types."""
 

@@ -122,8 +122,8 @@ class ToolWithSchema:
   def __init__(self, fn: Callable[..., Any], input_schema: dict[str, Any]):
     self.fn = fn
     self.input_schema = input_schema
-    self.__name__ = fn.__name__
-    self.__doc__ = fn.__doc__
+    self.__name__ = getattr(fn, "__name__", None) or type(fn).__name__
+    self.__doc__ = getattr(fn, "__doc__", None)
 
   def __call__(self, **kwargs: Any) -> Any:
     return self.fn(**kwargs)
@@ -179,7 +179,7 @@ class ToolRunner:
     Raises:
       ValueError: If a tool with the same name is already registered.
     """
-    tool_name = name or tool.__name__
+    tool_name = name or getattr(tool, "__name__", None) or type(tool).__name__
     if tool_name in self._tools:
       raise ValueError(f"Tool '{tool_name}' is already registered.")
     self._tools[tool_name] = tool
