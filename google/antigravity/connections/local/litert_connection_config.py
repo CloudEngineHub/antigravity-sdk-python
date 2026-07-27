@@ -136,7 +136,14 @@ class LiteRTAgentConfig(BaseLocalAgentConfig):
       hook_runner: Any,
   ) -> "connection.ConnectionStrategy":
     # pylint: disable=g-import-not-at-top
-    from google.antigravity.connections.local import litert_connection
+    try:
+      from google.antigravity.connections.local import litert_connection  # type: ignore[missing-module-attribute]
+    except (ImportError, ModuleNotFoundError) as e:
+      raise RuntimeError(
+          "LiteRT backend is not available. To run local LiteRT/Gemma models, "
+          "please install the optional LiteRT dependencies (e.g., pip install "
+          "litert-lm or include the LiteRT backend in your build dependencies)."
+      ) from e
 
     # pylint: enable=g-import-not-at-top
     return litert_connection.LiteRTConnectionStrategy(

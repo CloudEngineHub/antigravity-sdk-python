@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for LiteRTConnectionStrategy and LocalOpenAIConnectionStrategy."""
+"""Unit tests for LiteRTConnectionStrategy and LiteRTAgentConfig."""
 
 import json
 import logging
@@ -162,11 +162,11 @@ mock_litert.ToolCall = MockToolCall
 sys.modules["litert_lm"] = mock_litert
 
 # pylint: disable=g-import-not-at-top
+from google.antigravity.proto import localharness_pb2
 from google.antigravity import types
 from google.antigravity.connections.local import litert_connection
 from google.antigravity.connections.local import litert_connection_config
 from google.antigravity.connections.local import litert_server
-from google.antigravity.connections.local import local_openai_connection_config
 
 # pylint: enable=g-import-not-at-top
 
@@ -337,36 +337,9 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(len(h_cfg.models), 1)
     model = h_cfg.models[0]
     self.assertEqual(model.name, "model.litertlm")
-    self.assertEqual(
-        model.types, [litert_connection.localharness_pb2.MODEL_TYPE_TEXT]
-    )
+    self.assertEqual(model.types, [localharness_pb2.MODEL_TYPE_TEXT])
     self.assertTrue(model.HasField("gemma_endpoint"))
     self.assertEqual(model.gemma_endpoint.base_url, "http://127.0.0.1:54321")
-
-  def test_local_openai_strategy_harness_config(self):
-    """Verify generic external OpenAI configuration works and clears Gemini config."""
-    config = local_openai_connection_config.LocalOpenAIAgentConfig(
-        base_url="http://localhost:11434/v1",
-        model="llama3.1",
-    )
-    strategy = config.create_strategy(
-        tool_runner=mock.MagicMock(),
-        hook_runner=mock.MagicMock(),
-    )
-
-    self.assertIsInstance(
-        strategy, litert_connection.LocalOpenAIConnectionStrategy
-    )
-    h_cfg = strategy._build_harness_config()
-
-    self.assertEqual(len(h_cfg.models), 1)
-    model = h_cfg.models[0]
-    self.assertEqual(model.name, "llama3.1")
-    self.assertEqual(
-        model.types, [litert_connection.localharness_pb2.MODEL_TYPE_TEXT]
-    )
-    self.assertTrue(model.HasField("gemma_endpoint"))
-    self.assertEqual(model.gemma_endpoint.base_url, "http://localhost:11434/v1")
 
   @mock.patch("os.path.exists")
   def test_litert_config_max_context_tokens(self, mock_exists):
@@ -383,22 +356,13 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     )
     self.assertEqual(strategy._max_context_tokens, 12345)
 
-  def test_configs_default_capabilities(self):
-    """Verify LiteRTAgentConfig and LocalOpenAIAgentConfig default to all capabilities enabled."""
-    # LiteRTAgentConfig
+  def test_litert_config_default_capabilities(self):
+    """Verify LiteRTAgentConfig defaults to all capabilities enabled."""
     litert_config = litert_connection_config.LiteRTAgentConfig(
         model_path="/tmp/model.litertlm",
     )
     self.assertIsNone(litert_config.capabilities.enabled_tools)
     self.assertIsNone(litert_config.capabilities.disabled_tools)
-
-    # LocalOpenAIAgentConfig
-    openai_config = local_openai_connection_config.LocalOpenAIAgentConfig(
-        base_url="http://localhost:11434/v1",
-        model="llama3.1",
-    )
-    self.assertIsNone(openai_config.capabilities.enabled_tools)
-    self.assertIsNone(openai_config.capabilities.disabled_tools)
 
   @mock.patch("os.path.exists")
   @mock.patch("subprocess.Popen")
@@ -534,14 +498,6 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertGreater(len(config.policies), 0)
     self.assertEqual(config.policies[0].name, "workspace_only")
 
-    config_openai = local_openai_connection_config.LocalOpenAIAgentConfig(
-        base_url="http://localhost",
-        model="m",
-        workspaces=["/tmp/my_workspace"],
-    )
-    self.assertGreater(len(config_openai.policies), 0)
-    self.assertEqual(config_openai.policies[0].name, "workspace_only")
-
   @mock.patch(
       "google.antigravity.connections.local.litert_connection._check_gpu_acceleration_available"
   )
@@ -608,29 +564,6 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
       mock_shutdown.assert_called_once()
       mock_close.assert_called_once()
 
-  def test_local_openai_strategy_validate_empty_base_url(self):
-    """Verify LocalOpenAIConnectionStrategy validates non-empty base_url."""
-    strategy = litert_connection.LocalOpenAIConnectionStrategy(
-        base_url="",
-        model_name="test",
-        tool_runner=mock.MagicMock(),
-        hook_runner=mock.MagicMock(),
-    )
-    with self.assertRaises(types.AntigravityValidationError):
-      strategy._validate_connection()
-
-  def test_local_openai_config_model_target_parsing(self):
-    """Verify LocalOpenAIAgentConfig parses model and endpoint base_url from ModelTarget."""
-    endpoint = types.GeminiAPIEndpoint(base_url="http://custom-ollama:11434/v1")
-    target = types.ModelTarget(name="llama3.2", endpoint=endpoint)
-    config = local_openai_connection_config.LocalOpenAIAgentConfig(model=target)
-    strategy = config.create_strategy(
-        tool_runner=mock.MagicMock(),
-        hook_runner=mock.MagicMock(),
-    )
-    self.assertEqual(strategy._model_name, "llama3.2")
-    self.assertEqual(strategy._base_url, "http://custom-ollama:11434/v1")
-
   @mock.patch.object(litert_connection.litert_server, "_LITERT_AVAILABLE", True)
   def test_openai_tool_base_class_inheritance(self):
     """Verify OpenAITool inherits from litert_lm.Tool when litert_lm is available."""
@@ -696,31 +629,6 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     )
     config = litert_connection_config.LiteRTAgentConfig(
         model_path="/tmp/model.litertlm",
-        mcp_servers=[mcp_server],
-        subagents=[subagent],
-    )
-    strategy = config.create_strategy(
-        tool_runner=mock.MagicMock(),
-        hook_runner=mock.MagicMock(),
-    )
-    self.assertEqual(strategy._mcp_servers, [mcp_server])
-    self.assertEqual(strategy._subagents, [subagent])
-
-  def test_local_openai_config_mcp_servers_and_subagents_passed_to_strategy(
-      self,
-  ):
-    """Verify LocalOpenAIAgentConfig passes mcp_servers and subagents to strategy."""
-    mcp_server = types.McpStdioServer(
-        name="test_mcp", command="echo", args=["hello"]
-    )
-    subagent = types.SubagentConfig(
-        name="test_subagent",
-        description="A test subagent",
-        system_instructions="You are a subagent",
-    )
-    config = local_openai_connection_config.LocalOpenAIAgentConfig(
-        base_url="http://localhost:11434/v1",
-        model="llama3.1",
         mcp_servers=[mcp_server],
         subagents=[subagent],
     )
@@ -836,6 +744,37 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
           lock_acquired,
           "Engine lock should be waited on during warmup cleanup.",
       )
+
+  def test_litert_config_create_strategy_import_error(self):
+    """Verify LiteRTAgentConfig raises RuntimeError when litert_connection is not available."""
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+    )
+    local_pkg = sys.modules[
+        "google.antigravity.connections.local"
+    ]
+    orig_attr = getattr(local_pkg, "litert_connection", None)
+    try:
+      if hasattr(local_pkg, "litert_connection"):
+        delattr(local_pkg, "litert_connection")
+      with mock.patch.dict(
+          sys.modules,
+          {
+              "google.antigravity.connections.local.litert_connection": (
+                  None
+              )
+          },
+      ):
+        with self.assertRaisesRegex(
+            RuntimeError, "LiteRT backend is not available"
+        ):
+          config.create_strategy(
+              tool_runner=mock.MagicMock(),
+              hook_runner=mock.MagicMock(),
+          )
+    finally:
+      if orig_attr is not None:
+        setattr(local_pkg, "litert_connection", orig_attr)
 
 
 if __name__ == "__main__":

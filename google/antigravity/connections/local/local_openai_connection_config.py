@@ -96,10 +96,10 @@ class LocalOpenAIAgentConfig(BaseLocalAgentConfig):
     elif isinstance(self.model, str):
       model_name = self.model
     # pylint: disable=g-import-not-at-top
-    from google.antigravity.connections.local import litert_connection
+    from google.antigravity.connections.local import local_openai_connection
 
     # pylint: enable=g-import-not-at-top
-    return litert_connection.LocalOpenAIConnectionStrategy(
+    return local_openai_connection.LocalOpenAIConnectionStrategy(
         base_url=resolved_base_url or "",
         model_name=model_name,
         tool_runner=tool_runner,
