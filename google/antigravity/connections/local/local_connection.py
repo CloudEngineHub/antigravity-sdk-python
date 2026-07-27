@@ -94,6 +94,33 @@ def build_gemini_options_proto(
   return proto
 
 
+def build_retry_config_proto(
+    config: types.RetryConfig | None,
+) -> localharness_pb2.RetryConfig | None:
+  """Builds a RetryConfig proto from a RetryConfig model."""
+  if not config:
+    return None
+  proto = localharness_pb2.RetryConfig()
+  if config.api_retry:
+    api_data = config.api_retry.model_dump(exclude_none=True)
+    if api_data:
+      proto.api_retry.CopyFrom(
+          localharness_pb2.ModelAPIRetryConfig(**api_data)
+      )
+  if config.model_output_retry:
+    output_data = config.model_output_retry.model_dump(exclude_none=True)
+    if output_data:
+      proto.model_output_retry.CopyFrom(
+          localharness_pb2.ModelOutputRetryConfig(**output_data)
+      )
+  if (
+      not proto.HasField("api_retry")
+      and not proto.HasField("model_output_retry")
+  ):
+    return None
+  return proto
+
+
 def build_models_proto(
     models: list[types.ModelTarget],
 ) -> list[localharness_pb2.ModelConfig]:
@@ -664,6 +691,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       env: dict[str, str] | None = None,
       subagents: list[types.SubagentConfig] | None = None,
       debug_config: connection.DebugConfig | None = None,
+      retry_config: types.RetryConfig | None = None,
   ):
     """Initializes the instance.
 
@@ -683,6 +711,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       env: Optional dictionary of custom environment variables.
       subagents: Optional list of static subagent configurations.
       debug_config: Optional debug configuration for the connection.
+      retry_config: Optional retry configuration for model API and outputs.
     """
     self._binary_path = _get_default_binary_path()
     self._tool_runner = tool_runner
@@ -693,6 +722,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
     self._skills_paths = skills_paths
     self._env = env
     self._debug_config = debug_config
+    self._retry_config = retry_config
 
     # Normalize str shorthand to SystemInstructions model.
     self._system_instructions: types.SystemInstructions | None = None
@@ -942,7 +972,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
     custom_agents_protos = self._build_custom_subagents_protos(
         main_agent_tool_protos
     )
-    return localharness_pb2.HarnessConfig(
+    harness_config = localharness_pb2.HarnessConfig(
         tools=list(main_agent_tool_protos.values()),
         system_instructions=system_instructions_proto,
         cascade_id=self._conversation_id or "",
@@ -965,6 +995,11 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
         enabled_hooks=enabled_hooks,
         custom_subagents=custom_agents_protos,
     )
+    if self._retry_config:
+      retry_proto = build_retry_config_proto(self._retry_config)
+      if retry_proto:
+        harness_config.retry_config.CopyFrom(retry_proto)
+    return harness_config
 
   def _get_enabled_hooks(self) -> list[Any]:
     """Returns a list of proto enum IDs for registered hook collections."""

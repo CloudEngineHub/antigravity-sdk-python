@@ -194,6 +194,7 @@ class LocalAgentConfig(BaseLocalAgentConfig):
           dict[str, Any] | type[pydantic.BaseModel] | str | None
       ) = None,
       skills_paths: list[str] | None = None,
+      retry_config: types.RetryConfig | None = None,
       model: str | types.ModelTarget | None = None,
       models: list[types.ModelTarget] | None = None,
       api_key: str | None = None,
@@ -325,4 +326,5 @@ class LocalAgentConfig(BaseLocalAgentConfig):
         env=self.env,
         subagents=self.subagents,
         debug_config=self.debug_config,
+        retry_config=self.retry_config,
     )

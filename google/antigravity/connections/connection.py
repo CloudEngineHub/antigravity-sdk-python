@@ -70,6 +70,9 @@ class AgentConfig(abc.ABC, pydantic.BaseModel):
   skills_paths: list[str] = pydantic.Field(default_factory=list)
   subagents: list[types.SubagentConfig] = pydantic.Field(default_factory=list)
   debug_config: DebugConfig | None = None
+  # Optional retry configuration. Supported by Local, RemoteWebsocket, and JPv2
+  # (AntigravityProdActor) connection strategies; ignored by deprecated JPv1.
+  retry_config: types.RetryConfig | None = None
 
   @pydantic.field_validator("debug_config", mode="before")
   @classmethod

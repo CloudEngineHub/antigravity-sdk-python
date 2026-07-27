@@ -63,6 +63,9 @@ relevant information.
 
 -   If the user needs to implement basic agent behavior, streaming responses, or
     expose internal thoughts, read `examples/getting_started/hello_world.md`.
+-   If the user needs to customize or override default retry behavior and
+    exponential backoff for API errors or schema validation, read
+    `examples/getting_started/customizing_retries.md`.
 -   If the user needs to equip an agent with custom capabilities (tools) derived
     from Python functions, or maintain agent state across tool execution, read
     `examples/getting_started/custom_tool.md`.

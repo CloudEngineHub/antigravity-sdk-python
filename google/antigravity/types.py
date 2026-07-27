@@ -55,6 +55,9 @@ __all__ = [
     "SubagentCapabilities",
     "BuiltinTools",
     "CapabilitiesConfig",
+    "ModelAPIRetryConfig",
+    "ModelOutputRetryConfig",
+    "RetryConfig",
     "SessionContinuationMode",
     "BaseMcpServerConfig",
     "McpStdioServer",
@@ -344,6 +347,74 @@ class CapabilitiesConfig(pydantic.BaseModel):
           "enabled_tools and disabled_tools should be mutually exclusive."
       )
     return self
+
+
+_MAX_UINT32 = 2**32 - 1  # Maximum value for protobuf uint32 wire fields
+
+
+class ModelAPIRetryConfig(pydantic.BaseModel):
+  """Configuration for API retry behavior with exponential backoff.
+
+  Attributes:
+    max_retries: The maximum number of retries for transient API errors.
+    initial_sleep_duration_ms: The initial sleep duration in milliseconds.
+    exponential_multiplier: The multiplier for exponential backoff.
+    jitter_range: The range for jitter when calculating backoff.
+  """
+
+  max_retries: int | None = pydantic.Field(default=None, ge=0, le=_MAX_UINT32)
+  initial_sleep_duration_ms: int | None = pydantic.Field(
+      default=None, ge=0, le=_MAX_UINT32
+  )
+  exponential_multiplier: float | None = pydantic.Field(default=None, ge=0.0)
+  jitter_range: float | None = pydantic.Field(default=None, ge=0.0)
+
+
+class ModelOutputRetryConfig(pydantic.BaseModel):
+  """Configuration for model output retry behavior.
+
+  Attributes:
+    max_retries: The maximum number of retries for malformed model outputs.
+  """
+
+  max_retries: int | None = pydantic.Field(default=None, ge=0, le=_MAX_UINT32)
+
+
+class RetryConfig(pydantic.BaseModel):
+  """Combined retry configuration for model API calls and output validation.
+
+  When `retry_config` is omitted (or fields are left as None), the backend
+  automatically applies built-in interactive defaults (e.g., standard API retry
+  counts, exponential backoff, and model output validation attempts). You only
+  need to provide explicit configuration when overriding these system defaults.
+
+  Attributes:
+    api_retry: Optional configuration for API retry behavior with exponential
+      backoff.
+    model_output_retry: Optional configuration for model output retry behavior.
+  """
+
+  api_retry: ModelAPIRetryConfig | None = None
+  model_output_retry: ModelOutputRetryConfig | None = None
+
+  @classmethod
+  def benchmark(cls) -> "RetryConfig":
+    """Optimized for evaluation suites, automated benchmarks, and load testing.
+
+    Uses unbounded retry tolerance (max uint32: 4,294,967,295 attempts) for
+    transient API errors (429 rate limits, 503 service throttling) to prevent
+    quota issues from crashing evaluation suites, while relying on the default
+    localharness model output retry behavior to remain consistent with
+    production product performance.
+
+    Returns:
+      A RetryConfig configured for benchmark and eval workflows.
+    """
+    return cls(
+        api_retry=ModelAPIRetryConfig(
+            max_retries=_MAX_UINT32, initial_sleep_duration_ms=1000
+        )
+    )
 
 
 class BaseMcpServerConfig(pydantic.BaseModel):

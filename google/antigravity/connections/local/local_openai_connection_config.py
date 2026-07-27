@@ -115,4 +115,5 @@ class LocalOpenAIAgentConfig(BaseLocalAgentConfig):
         subagents=self.subagents,
         env=self.env,
         debug_config=self.debug_config,
+        retry_config=self.retry_config,
     )

@@ -1839,6 +1839,120 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     self.assertEqual(stdio_server.stdio.env["NODE_ENV"], "production")
     self.assertEqual(stdio_server.timeout_seconds, 10)
 
+  def test_retry_config_none_or_default(self):
+    """Verifies that unset or default retry_config leaves proto field unset."""
+    strategy_none = self._make_strategy(retry_config=None)
+    config_none = strategy_none._build_harness_config()
+    self.assertFalse(config_none.HasField("retry_config"))
+
+    strategy_empty = self._make_strategy(retry_config=types.RetryConfig())
+    config_empty = strategy_empty._build_harness_config()
+    self.assertFalse(config_empty.HasField("retry_config"))
+
+  def test_retry_config_api_retry_only(self):
+    """Verifies translation when only api_retry is configured."""
+    retry_cfg = types.RetryConfig(
+        api_retry=types.ModelAPIRetryConfig(
+            max_retries=5,
+            initial_sleep_duration_ms=500,
+            exponential_multiplier=1.5,
+            jitter_range=0.1,
+        )
+    )
+    strategy = self._make_strategy(retry_config=retry_cfg)
+    config = strategy._build_harness_config()
+    self.assertTrue(config.HasField("retry_config"))
+    self.assertTrue(config.retry_config.HasField("api_retry"))
+    self.assertFalse(config.retry_config.HasField("model_output_retry"))
+    self.assertEqual(config.retry_config.api_retry.max_retries, 5)
+    self.assertEqual(
+        config.retry_config.api_retry.initial_sleep_duration_ms, 500
+    )
+    self.assertAlmostEqual(
+        config.retry_config.api_retry.exponential_multiplier, 1.5
+    )
+    self.assertAlmostEqual(config.retry_config.api_retry.jitter_range, 0.1)
+
+  def test_retry_config_model_output_retry_only(self):
+    """Verifies translation when only model_output_retry is configured."""
+    retry_cfg = types.RetryConfig(
+        model_output_retry=types.ModelOutputRetryConfig(max_retries=3)
+    )
+    strategy = self._make_strategy(retry_config=retry_cfg)
+    config = strategy._build_harness_config()
+    self.assertTrue(config.HasField("retry_config"))
+    self.assertFalse(config.retry_config.HasField("api_retry"))
+    self.assertTrue(config.retry_config.HasField("model_output_retry"))
+    self.assertEqual(config.retry_config.model_output_retry.max_retries, 3)
+
+  def test_retry_config_all_fields_set(self):
+    """Verifies translation when both API retry and output retry are set."""
+    retry_cfg = types.RetryConfig(
+        api_retry=types.ModelAPIRetryConfig(
+            max_retries=10,
+            initial_sleep_duration_ms=1000,
+            exponential_multiplier=2.0,
+            jitter_range=0.2,
+        ),
+        model_output_retry=types.ModelOutputRetryConfig(max_retries=5),
+    )
+    strategy = self._make_strategy(retry_config=retry_cfg)
+    config = strategy._build_harness_config()
+    self.assertTrue(config.retry_config.HasField("api_retry"))
+    self.assertTrue(config.retry_config.HasField("model_output_retry"))
+    self.assertEqual(config.retry_config.api_retry.max_retries, 10)
+    self.assertEqual(
+        config.retry_config.api_retry.initial_sleep_duration_ms, 1000
+    )
+    self.assertAlmostEqual(
+        config.retry_config.api_retry.exponential_multiplier, 2.0
+    )
+    self.assertAlmostEqual(config.retry_config.api_retry.jitter_range, 0.2)
+    self.assertEqual(config.retry_config.model_output_retry.max_retries, 5)
+
+  def test_retry_config_boundary_and_edge_values(self):
+    """Verifies translation of boundary values like 0, max uint32, and float multipliers."""
+    max_uint32 = 4294967295
+    retry_cfg = types.RetryConfig(
+        api_retry=types.ModelAPIRetryConfig(
+            max_retries=0,
+            initial_sleep_duration_ms=max_uint32,
+            exponential_multiplier=0.0001,
+            jitter_range=1.0,
+        ),
+        model_output_retry=types.ModelOutputRetryConfig(max_retries=max_uint32),
+    )
+    strategy = self._make_strategy(retry_config=retry_cfg)
+    config = strategy._build_harness_config()
+    self.assertEqual(config.retry_config.api_retry.max_retries, 0)
+    self.assertEqual(
+        config.retry_config.api_retry.initial_sleep_duration_ms, max_uint32
+    )
+    self.assertAlmostEqual(
+        config.retry_config.api_retry.exponential_multiplier, 0.0001
+    )
+    self.assertAlmostEqual(config.retry_config.api_retry.jitter_range, 1.0)
+    self.assertEqual(
+        config.retry_config.model_output_retry.max_retries, max_uint32
+    )
+
+  def test_retry_config_from_local_agent_config(self):
+    """Verifies end-to-end propagation from LocalAgentConfig through create_strategy."""
+    cfg = local_connection_config.LocalAgentConfig(
+        retry_config=types.RetryConfig(
+            api_retry=types.ModelAPIRetryConfig(
+                max_retries=7, initial_sleep_duration_ms=250
+            )
+        )
+    )
+    strategy = cfg.create_strategy(tool_runner=None, hook_runner=None)
+    config = strategy._build_harness_config()
+    self.assertTrue(config.HasField("retry_config"))
+    self.assertEqual(config.retry_config.api_retry.max_retries, 7)
+    self.assertEqual(
+        config.retry_config.api_retry.initial_sleep_duration_ms, 250
+    )
+
 
 class LocalConnectionStrategyApiKeyTest(unittest.IsolatedAsyncioTestCase):
   """Tests for API key validation in LocalConnectionStrategy."""

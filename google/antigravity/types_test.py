@@ -1669,5 +1669,34 @@ class UsageMetadataTest(unittest.TestCase):
     self.assertEqual(u.__add__(1), NotImplemented)
 
 
+class RetryConfigTest(unittest.TestCase):
+  """Tests for RetryConfig presets and explicit configuration."""
+
+  def test_benchmark_preset(self):
+    cfg = types.RetryConfig.benchmark()
+    self.assertIsNotNone(cfg.api_retry)
+    self.assertEqual(cfg.api_retry.max_retries, 2**32 - 1)
+    self.assertEqual(cfg.api_retry.initial_sleep_duration_ms, 1000)
+    self.assertIsNone(cfg.model_output_retry)
+
+  def test_explicit_models(self):
+    cfg = types.RetryConfig(
+        api_retry=types.ModelAPIRetryConfig(max_retries=5),
+        model_output_retry=types.ModelOutputRetryConfig(max_retries=3),
+    )
+    self.assertEqual(cfg.api_retry.max_retries, 5)
+    self.assertEqual(cfg.model_output_retry.max_retries, 3)
+
+  def test_uint32_validation(self):
+    with self.assertRaises(pydantic.ValidationError):
+      types.ModelAPIRetryConfig(max_retries=-1)
+    with self.assertRaises(pydantic.ValidationError):
+      types.ModelAPIRetryConfig(max_retries=2**32)
+    with self.assertRaises(pydantic.ValidationError):
+      types.ModelOutputRetryConfig(max_retries=-5)
+    with self.assertRaises(pydantic.ValidationError):
+      types.ModelOutputRetryConfig(max_retries=2**32)
+
+
 if __name__ == "__main__":
   absltest.main()
