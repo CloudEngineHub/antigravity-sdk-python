@@ -452,7 +452,6 @@ message TrajectoryStateUpdate {
     STATE_RUNNING = 1;
     STATE_FULLY_IDLE = 2;
     STATE_CANCELLED = 3;
-    STATE_WAITING_FOR_TASKS = 4;
   }
   string trajectory_id = 2;
   .antigravity.localharness.TrajectoryStateUpdate.State state = 3;
