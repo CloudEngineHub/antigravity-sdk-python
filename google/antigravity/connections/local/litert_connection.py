@@ -39,7 +39,7 @@ except ImportError:
   litert_lm = None
   _LITERT_AVAILABLE = False
 
-_WARMUP_REQUEST_TIMEOUT_SECONDS = 60
+_WARMUP_REQUEST_TIMEOUT_SECONDS = 120
 
 
 class LocalOpenAIConnectionStrategy(local_connection.LocalConnectionStrategy):
@@ -315,6 +315,12 @@ class LiteRTConnectionStrategy(LocalOpenAIConnectionStrategy):
       logging.debug(
           "LiteRTConnectionStrategy __aenter__: Starting warm-up request"
       )
+      warmup_timeout = float(_WARMUP_REQUEST_TIMEOUT_SECONDS)
+      if self._max_context_tokens:
+        warmup_timeout = max(
+            warmup_timeout, float(self._max_context_tokens) / 250.0
+        )
+
       try:
         warmup_payload = {
             "model": self._model_name,
@@ -331,9 +337,7 @@ class LiteRTConnectionStrategy(LocalOpenAIConnectionStrategy):
           logging.debug(
               "LiteRTConnectionStrategy __aenter__: _warmup query start"
           )
-          with _urlopen_no_proxy(
-              req, timeout=_WARMUP_REQUEST_TIMEOUT_SECONDS
-          ) as r:
+          with _urlopen_no_proxy(req, timeout=warmup_timeout) as r:
             r.read()
           logging.debug(
               "LiteRTConnectionStrategy __aenter__: _warmup query complete"
@@ -347,6 +351,16 @@ class LiteRTConnectionStrategy(LocalOpenAIConnectionStrategy):
       # pylint: disable=broad-exception-caught
       except Exception as e:  # pylint: disable=broad-exception-caught  # pylint: disable=broad-exception-caught
         logging.warning("LiteRT warm-up request timed out or failed: %s", e)
+      finally:
+        # Ensure mid-stream warm-up handlers finish and release the engine
+        # lock before accepting real user requests from localharness.
+        if self._openai_server and hasattr(self._openai_server, "engine_lock"):
+
+          def _wait_for_engine():
+            with self._openai_server.engine_lock:
+              pass
+
+          await loop.run_in_executor(None, _wait_for_engine)
 
       # Start Go localharness Subprocess via parent
       await super().__aenter__()

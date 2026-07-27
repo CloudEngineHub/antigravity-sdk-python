@@ -765,6 +765,78 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
       finally:
         logger.setLevel(old_level)
 
+  async def test_litert_warmup_timeout_scaling_and_engine_lock_wait(self):
+    """Verify warmup timeout scaling and engine lock wait on timeout."""
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/dummy/path.litertlm",
+        max_context_tokens=65536,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    mock_engine_cls = mock.MagicMock()
+    mock_engine_inst = mock.MagicMock()
+    mock_engine_cls.return_value = mock_engine_inst
+    mock_engine_inst.__enter__.return_value = mock.MagicMock()
+
+    lock_acquired = False
+
+    class FakeLock:
+
+      def __enter__(self):
+        nonlocal lock_acquired
+        lock_acquired = True
+        return self
+
+      def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    fake_server_inst = mock.MagicMock()
+    fake_server_inst.engine_lock = FakeLock()
+
+    with mock.patch.object(
+        litert_connection, "litert_lm"
+    ) as mock_lm, mock.patch.object(
+        litert_connection.litert_server,
+        "LiteRTOpenAIServer",
+        return_value=fake_server_inst,
+    ), mock.patch.object(
+        litert_connection, "_urlopen_no_proxy"
+    ) as mock_urlopen, mock.patch(
+        "os.path.exists", return_value=True
+    ), mock.patch(
+        "google.antigravity.connections.local.local_connection.LocalConnectionStrategy.__aenter__",
+        return_value=None,
+    ):
+
+      def fake_urlopen(req, timeout=None):
+        url_str = str(
+            req.full_url if hasattr(req, "full_url") else str(req)
+        )
+        if "chat/completions" in url_str:
+          # Check scaled timeout: 65536 / 250 = 262.144
+          self.assertAlmostEqual(timeout, 262.144, places=2)
+          raise TimeoutError("Simulated warm-up timeout")
+        mock_resp = mock.MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__.return_value = mock_resp
+        return mock_resp
+
+      mock_urlopen.side_effect = fake_urlopen
+      mock_lm.Engine = mock_engine_cls
+      mock_lm.Backend.CPU.return_value = "CPU"
+
+      try:
+        await strategy.__aenter__()
+      finally:
+        await strategy.__aexit__(None, None, None)
+
+      self.assertTrue(
+          lock_acquired,
+          "Engine lock should be waited on during warmup cleanup.",
+      )
+
 
 if __name__ == "__main__":
   unittest.main()
