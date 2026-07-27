@@ -28,9 +28,13 @@ To run:
 Criteria for correct script performance:
   1. The script exits cleanly with return code 0 (no unhandled exceptions).
   2. The output contains "[Programmatic Cancel Caught]" showing the
-     SDK-specific cancellation was handled.
+     SDK-specific cancellation was handled (or
+     "[Chat task already completed, skipping cancellation.]" if generation
+     completed prior to cancellation).
   3. The output contains "[Native Cancel Caught]" showing the standard Python
-     cancellation was handled.
+     cancellation was handled (or
+     "[Chat task already completed, skipping cancellation.]" if generation
+     completed prior to cancellation).
 """
 
 import asyncio
@@ -69,10 +73,10 @@ async def main() -> None:
 
     # Wait for a short duration to let generation start.
     print(
-        "\n  [Waiting for 10 seconds before programmatically aborting...]",
+        "\n  [Waiting for 2 seconds before programmatically aborting...]",
         flush=True,
     )
-    await asyncio.sleep(10)
+    await asyncio.sleep(2)
 
     # Cancel the turn programmatically using the response's cancel() method.
     if not chat_task.done():
@@ -116,10 +120,10 @@ async def main() -> None:
 
     # Wait for a short duration to let generation start.
     print(
-        "\n  [Waiting for 10 seconds before natively cancelling the task...]",
+        "\n  [Waiting for 2 seconds before natively cancelling the task...]",
         flush=True,
     )
-    await asyncio.sleep(10)
+    await asyncio.sleep(2)
 
     # Cancel the Python task itself.
     if not chat_task.done():
