@@ -32,7 +32,9 @@ from google.antigravity.connections.local.types import FindFileResult
 from google.antigravity.connections.local.types import GenerateImageResult
 from google.antigravity.connections.local.types import ListDirectoryEntry
 from google.antigravity.connections.local.types import ListDirectoryResult
+from google.antigravity.connections.local.types import ReadUrlContentResult
 from google.antigravity.connections.local.types import RunCommandResult
 from google.antigravity.connections.local.types import SearchDirectoryResult
+from google.antigravity.connections.local.types import SearchWebResult
 from google.antigravity.connections.local.types import TextResult
 from google.antigravity.connections.local.types import ToolOutput
