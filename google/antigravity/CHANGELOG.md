@@ -7,6 +7,34 @@ All notable changes to the Google Antigravity Python SDK will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.9] - 2026-07-27
+
+Release 0.1.9 of the Google Antigravity Python SDK adds model-call retry/backoff configuration, improves tool registration for custom functions, adds missing `BuiltinTools` exports, fixes user audio payload processing, and adds connection `DebugConfig` support along with `ToolExecutionError` handling.
+
+### 🌟 Key Highlights
+
+- **Model-Call Retry & Backoff Configuration**: Exposes configurable retry and backoff parameters for model calls.
+- **LiteRT Warm-up Timeout Scaling**: Dynamically scales LiteRT engine warm-up timeouts based on context size and synchronizes warm-up cleanup.
+- **Improved Tool Registration**: Enhances automatic tool registration for custom Python functions.
+- **BuiltinTools Typing Exports**: Exports `BuiltinTools` at top-level typing boundaries for subagent tool configuration.
+- **Audio Payload Processing Fix**: Fixes processing for user audio payloads in interactive agent sessions.
+- **ToolExecutionError Handling**: Introduces `ToolExecutionError` for explicit tool failure handling.
+- **Connection DebugConfig**: Adds base `DebugConfig` options to Connection configuration.
+
+---
+
+### 📋 Detailed Changes
+
+#### Features & Enhancements
+- **Retry & Backoff**: Expose model-call retry/backoff configuration options in LocalAgentConfig.
+- **Tool Registration**: Improve automatic tool registration and docstring parsing for custom functions.
+- **BuiltinTools**: Export `BuiltinTools` from main package namespace.
+- **DebugConfig**: Add `DebugConfig` for enhanced connection debugging and logging.
+- **Error Handling**: Add `ToolExecutionError` to SDK error types.
+
+#### Bug Fixes
+- **Audio Payloads**: Fix user audio payload processing in agent sessions.
+
 ## [0.1.8] - 2026-07-21
 
 Release 0.1.8 of the Google Antigravity Python SDK updates the default text model to Gemini 3.6 Flash, adds support for custom subagent instructions, and implements automatic Pydantic argument coercion for tool calls. It also brings defensive prompt sanitization, configurable tool retries, and comprehensive stability improvements for local agent execution.
