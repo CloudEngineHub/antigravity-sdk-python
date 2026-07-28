@@ -91,6 +91,8 @@ __all__ = [
     "Audio",
     "Video",
     "Content",
+    "ContentPrimitive",
+    "from_file",
     "SlashCommand",
     "BuiltinSlashCommandName",
 ]
