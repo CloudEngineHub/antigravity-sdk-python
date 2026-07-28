@@ -113,6 +113,8 @@ async def run(transport: str) -> AsyncIterator[int]:
   )
   uvicorn_server = uvicorn.Server(config)
   task = asyncio.create_task(uvicorn_server.serve())
+  while not uvicorn_server.started:
+    await asyncio.sleep(0.05)
   try:
     yield port
   finally:
