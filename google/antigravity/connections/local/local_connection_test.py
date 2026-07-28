@@ -1232,8 +1232,8 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     """
     strategy = self._make_strategy(system_instructions="Be concise.")
     config = strategy._build_harness_config()
-    self.assertEqual(
-        len(config.system_instructions.appended.appended_sections), 1
+    self.assertLen(
+        config.system_instructions.appended.appended_sections, 1
     )
     self.assertEqual(
         config.system_instructions.appended.appended_sections[0].content,
@@ -1270,8 +1270,8 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     self.assertEqual(
         config.system_instructions.appended.custom_identity, "New Identity"
     )
-    self.assertEqual(
-        len(config.system_instructions.appended.appended_sections), 1
+    self.assertLen(
+        config.system_instructions.appended.appended_sections, 1
     )
     self.assertEqual(
         config.system_instructions.appended.appended_sections[0].title, "extra"
@@ -1288,8 +1288,8 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     self.assertEqual(
         config.system_instructions.appended.custom_identity, "Only Identity"
     )
-    self.assertEqual(
-        len(config.system_instructions.appended.appended_sections), 0
+    self.assertEmpty(
+        config.system_instructions.appended.appended_sections
     )
 
   def test_system_instructions_model_templated_only_sections(self):
@@ -1304,8 +1304,8 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     )
     config = strategy._build_harness_config()
     self.assertEqual(config.system_instructions.appended.custom_identity, "")
-    self.assertEqual(
-        len(config.system_instructions.appended.appended_sections), 1
+    self.assertLen(
+        config.system_instructions.appended.appended_sections, 1
     )
     self.assertEqual(
         config.system_instructions.appended.appended_sections[0].title, "extra"
@@ -1321,6 +1321,19 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     config = strategy._build_harness_config()
     self.assertFalse(config.HasField("system_instructions"))
 
+  def test_to_system_instructions_proto_direct_string(self):
+    """Verifies that to_system_instructions_proto directly normalizes str to AppendedSystemInstructions."""
+    proto = local_connection.to_system_instructions_proto(
+        "Direct string instructions"
+    )
+    self.assertIsNotNone(proto)
+    self.assertTrue(proto.HasField("appended"))
+    self.assertLen(proto.appended.appended_sections, 1)
+    self.assertEqual(
+        proto.appended.appended_sections[0].content,
+        "Direct string instructions",
+    )
+
   def test_workspaces_to_proto(self):
     """Verifies workspace paths translate to Workspace protos correctly.
 
@@ -1333,7 +1346,7 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
         workspaces=["/home/user/project", "/tmp/scratch"]
     )
     config = strategy._build_harness_config()
-    self.assertEqual(len(config.workspaces), 2)
+    self.assertLen(config.workspaces, 2)
     self.assertEqual(
         config.workspaces[0].filesystem_workspace.directory,
         "/home/user/project",
@@ -1351,7 +1364,7 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     """
     strategy = self._make_strategy()
     config = strategy._build_harness_config()
-    self.assertEqual(len(config.workspaces), 0)
+    self.assertEmpty(config.workspaces)
 
   def test_empty_workspaces_list(self):
     """Verifies that an empty list produces an empty repeated field.
@@ -1362,7 +1375,7 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     """
     strategy = self._make_strategy(workspaces=[])
     config = strategy._build_harness_config()
-    self.assertEqual(len(config.workspaces), 0)
+    self.assertEmpty(config.workspaces)
 
   def test_skills_paths_to_proto(self):
     """Verifies skills_paths translate directly to the proto repeated field.
@@ -4339,7 +4352,7 @@ class LocalConnectionSubagentsTest(unittest.IsolatedAsyncioTestCase):
         ["my_custom_tool", "another_one"],
     )
     sections = custom_agent.system_instructions.appended.appended_sections
-    self.assertEqual(sections[0].title, "System")
+    self.assertEqual(sections[0].title, "user_system_instructions")
     self.assertEqual(sections[0].content, "Always say hello.")
 
   def test_builds_subagents_proto_with_sections(self):

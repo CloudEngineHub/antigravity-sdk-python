@@ -666,6 +666,50 @@ def _to_mcp_server_proto(
   raise ValueError(f"Unknown McpServerConfig type: {type(server_cfg)}")
 
 
+def to_system_instructions_proto(
+    instructions: str | types.SystemInstructions | None,
+) -> localharness_pb2.SystemInstructions | None:
+  """Converts string or SystemInstructions model to localharness SystemInstructions proto.
+
+  String instructions and TemplatedSystemInstructions map to
+  AppendedSystemInstructions (appending to default agent system instructions).
+  CustomSystemInstructions map to CustomSystemInstructions (replacing default
+  system instructions).
+
+  Args:
+    instructions: System instructions as string or SystemInstructions object.
+
+  Returns:
+    The localharness SystemInstructions proto, or None if instructions is empty.
+  """
+  if not instructions:
+    return None
+  if isinstance(instructions, str):
+    instructions = types.TemplatedSystemInstructions(
+        sections=[types.SystemInstructionSection(content=instructions)]
+    )
+
+  proto = localharness_pb2.SystemInstructions()
+  if isinstance(instructions, types.CustomSystemInstructions):
+    proto.custom.CopyFrom(
+        localharness_pb2.CustomSystemInstructions(
+            part=[
+                localharness_pb2.CustomSystemInstructions.Part(
+                    text=instructions.text
+                )
+            ]
+        )
+    )
+  elif isinstance(instructions, types.TemplatedSystemInstructions):
+    appended = localharness_pb2.AppendedSystemInstructions()
+    if instructions.identity:
+      appended.custom_identity = instructions.identity
+    for sec in instructions.sections:
+      appended.appended_sections.add(title=sec.title, content=sec.content)
+    proto.appended.CopyFrom(appended)
+  return proto
+
+
 class LocalConnectionStrategy(connection.ConnectionStrategy):
   """Strategy for establishing a LocalConnection."""
 
@@ -770,66 +814,13 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       self,
       instructions: str | types.SystemInstructions | None,
   ) -> localharness_pb2.SystemInstructions | None:
-    if not instructions:
-      return None
-    if isinstance(instructions, str):
-      instructions = types.CustomSystemInstructions(text=instructions)
-
-    proto = localharness_pb2.SystemInstructions()
-    if isinstance(instructions, types.CustomSystemInstructions):
-      proto.custom.CopyFrom(
-          localharness_pb2.CustomSystemInstructions(
-              part=[
-                  localharness_pb2.CustomSystemInstructions.Part(
-                      text=instructions.text
-                  )
-              ]
-          )
-      )
-    elif isinstance(instructions, types.TemplatedSystemInstructions):
-      appended = localharness_pb2.AppendedSystemInstructions()
-      if instructions.identity:
-        appended.custom_identity = instructions.identity
-      for sec in instructions.sections:
-        appended.appended_sections.add(title=sec.title, content=sec.content)
-      proto.appended.CopyFrom(appended)
-    return proto
+    return to_system_instructions_proto(instructions)
 
   def _to_subagent_system_instructions_proto(
       self,
       instructions: str | types.SystemInstructions | None,
   ) -> localharness_pb2.SystemInstructions | None:
-    if not instructions:
-      return None
-    if isinstance(instructions, types.CustomSystemInstructions):
-      proto = localharness_pb2.SystemInstructions()
-      proto.custom.CopyFrom(
-          localharness_pb2.CustomSystemInstructions(
-              part=[
-                  localharness_pb2.CustomSystemInstructions.Part(
-                      text=instructions.text
-                  )
-              ]
-          )
-      )
-      return proto
-    if isinstance(instructions, types.TemplatedSystemInstructions):
-      appended = localharness_pb2.AppendedSystemInstructions()
-      if instructions.identity:
-        appended.custom_identity = instructions.identity
-      for sec in instructions.sections:
-        appended.appended_sections.add(title=sec.title, content=sec.content)
-      proto = localharness_pb2.SystemInstructions()
-      proto.appended.CopyFrom(appended)
-      return proto
-
-    appended = localharness_pb2.AppendedSystemInstructions()
-    if isinstance(instructions, str):
-      appended.appended_sections.add(title="System", content=instructions)
-
-    proto = localharness_pb2.SystemInstructions()
-    proto.appended.CopyFrom(appended)
-    return proto
+    return to_system_instructions_proto(instructions)
 
   def _to_harness_side_tools_proto(
       self,
