@@ -1779,7 +1779,10 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
   def test_app_data_dir_default_empty(self):
     strategy = self._make_strategy()
     config = strategy._build_harness_config()
-    self.assertEqual(config.app_data_dir, "")
+    # When app_data_dir is not explicitly set, the strategy resolves the
+    # default (~/.gemini/antigravity) so Go's PolicyEvaluator can allowlist it.
+    expected = str(pathlib.Path("~/.gemini/antigravity").expanduser().resolve())
+    self.assertEqual(config.app_data_dir, expected)
 
   @parameterized.named_parameters(
       dict(

@@ -97,6 +97,7 @@ Predicate = Callable[..., bool | Awaitable[bool]]
 AskUserHandler = Callable[[types.ToolCall], bool | Awaitable[bool]]
 
 _WILDCARD = "*"
+_WORKSPACE_ONLY_POLICY_NAME = "workspace_only"
 
 
 class Decision(enum.Enum):
@@ -531,7 +532,7 @@ def workspace_only(workspaces: Sequence[PathOrStr]) -> list[Policy]:
     return not any(_is_path_in_workspace(path, ws) for ws in workspaces)
 
   return [
-      deny(tool, when=_outside_workspace, name="workspace_only")
+      deny(tool, when=_outside_workspace, name=_WORKSPACE_ONLY_POLICY_NAME)
       for tool in file_tools
   ]
 
@@ -886,7 +887,10 @@ def _to_policy_config_proto(
   for i, p in enumerate(flat):
     # TODO(b/539696157): Remove _parse_tool_target once Policy has server_name.
     tool_name, server_name = _parse_tool_target(p.tool)
-    is_dynamic = p.when is not None or p.decision == Decision.ASK_USER
+    is_workspace_only = p.name == _WORKSPACE_ONLY_POLICY_NAME
+    is_dynamic = (
+        p.when is not None or p.decision == Decision.ASK_USER
+    ) and not is_workspace_only
 
     rule_id = ""
     if is_dynamic:

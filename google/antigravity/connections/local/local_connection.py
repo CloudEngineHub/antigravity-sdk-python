@@ -988,7 +988,12 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
         finish_tool_schema_json=(
             self._capabilities_config.finish_tool_schema_json or ""
         ),
-        app_data_dir=self._app_data_dir or "",
+        app_data_dir=self._app_data_dir
+        or str(
+            (pathlib.Path("~") / ".gemini" / "antigravity")
+            .expanduser()
+            .resolve()
+        ),
         mcp_servers=mcp_server_protos,
         enabled_hooks=enabled_hooks,
         custom_subagents=custom_agents_protos,
