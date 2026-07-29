@@ -1003,14 +1003,11 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       if retry_proto:
         harness_config.retry_config.CopyFrom(retry_proto)
 
-    # TODO(b/abhipatel): Uncomment in CL 7 when Python-side policy enforcement
-    # (policy.enforce) is removed from agent.py, activating the native Go
-    # localharness policy engine.
-    # if self._policies:
-    #   policy_config, self._dynamic_policy_map = (
-    #       policy._to_policy_config_proto(self._policies)
-    #   )
-    #   harness_config.policy_config.CopyFrom(policy_config)
+    if self._policies:
+      policy_config, self._dynamic_policy_map = policy._to_policy_config_proto(
+          self._policies
+      )
+      harness_config.policy_config.CopyFrom(policy_config)
 
     return harness_config
 

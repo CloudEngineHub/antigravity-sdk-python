@@ -23,7 +23,6 @@ from google.antigravity import types
 from google.antigravity.connections import connection as connection_module
 from google.antigravity.conversation import conversation as conversation_lib
 from google.antigravity.hooks import hook_runner
-from google.antigravity.hooks import policy
 from google.antigravity.tools import tool_context
 from google.antigravity.tools import tool_runner
 from google.antigravity.triggers import trigger_runner
@@ -101,13 +100,6 @@ class Agent:
             "Add policies=[policy.allow_all()] to approve all tool calls, "
             "or policies=[policy.deny_all(), policy.allow('tool_name')] "
             "to selectively allow specific tools."
-        )
-
-      if active_policies:
-        self._hook_runner.register_hook(
-            policy.enforce(
-                active_policies, mcp_servers=self._config.mcp_servers
-            )
         )
 
       all_tools = list(self._config.tools)

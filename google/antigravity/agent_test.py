@@ -473,29 +473,7 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
     # TriggerRunner.stop() called during __aexit__.
     mock_runner_instance.stop.assert_called_once()
 
-  @mock.patch(
-      "google.antigravity.connections."
-      "local.local_connection.LocalConnectionStrategy"
-  )
-  @mock.patch.object(conversation.Conversation, "create")
-  async def test_agent_with_policies(
-      self, mock_conv_create, mock_strategy_class
-  ):
-    del mock_conv_create  # Unused.
 
-    mock_strategy_instance = mock.MagicMock()
-    mock_strategy_instance.stop = mock.AsyncMock()
-    mock_strategy_class.return_value = mock_strategy_instance
-
-    my_policy = policy.allow("some_tool")
-
-    config = local_connection.LocalAgentConfig(
-        system_instructions="test",
-        capabilities=types.CapabilitiesConfig(),
-        policies=[my_policy],
-    )
-    async with agent.Agent(config) as ag:
-      self.assertEqual(len(ag._hook_runner.pre_tool_call_decide_hooks), 1)
 
   @mock.patch(
       "google.antigravity.connections."
