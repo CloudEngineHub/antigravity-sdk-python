@@ -33,6 +33,18 @@ enum ModelType {
   MODEL_TYPE_TEXT = 1;
   MODEL_TYPE_IMAGE = 2;
 }
+enum PolicyDecision {
+  POLICY_DECISION_UNSPECIFIED = 0;
+  POLICY_DECISION_ALLOW = 1;
+  POLICY_DECISION_DENY = 2;
+  POLICY_DECISION_ASK_USER = 3;
+}
+enum PolicyEvaluationOutcome {
+  POLICY_EVALUATION_OUTCOME_UNSPECIFIED = 0;
+  POLICY_EVALUATION_OUTCOME_ALLOW = 1;
+  POLICY_EVALUATION_OUTCOME_DENY = 2;
+  POLICY_EVALUATION_OUTCOME_NO_MATCH = 3;
+}
 message InputConfig {
   string storage_directory = 1;
   uint32 port = 2;
@@ -75,6 +87,7 @@ message HarnessConfig {
   repeated .antigravity.localharness.CustomAgent custom_subagents = 17;
   .antigravity.localharness.ToolOutputTruncation tool_output_truncation = 18;
   .antigravity.localharness.RetryConfig retry_config = 20;
+  .antigravity.localharness.PolicyConfig policy_config = 21;
   extensions 1000 to 1999;
   extensions 2000 to max;
 }
@@ -254,6 +267,8 @@ message OutputEvent {
         initialize_conversation_response = 13;
     .antigravity.localharness.CallHookRequest call_hook_request = 14;
     bool session_end_response = 15;
+    .antigravity.localharness.PolicyDecisionRequest policy_decision_request =
+        16;
   }
   int64 seq_num = 1;
   int64 timestamp_micros = 2;
@@ -421,6 +436,8 @@ message InputEvent {
     string automated_trigger = 6;
     .antigravity.localharness.CallHookResponse call_hook_response = 8;
     bool session_end_request = 9;
+    .antigravity.localharness.PolicyDecisionResponse policy_decision_response =
+        10;
   }
 }
 message UserInput {
@@ -630,4 +647,26 @@ message ToolOutputTruncation {
         1;
     .antigravity.localharness.ToolOutputTruncation.ErrorStrategy error = 2;
   }
+}
+message PolicyConfig {
+  repeated .antigravity.localharness.PolicyRule rules = 1;
+}
+message PolicyRule {
+  string tool = 1;
+  string server_name = 2;
+  string name = 3;
+  .antigravity.localharness.PolicyDecision decision = 4;
+  string deny_reason = 5;
+  bool is_dynamic = 6;
+  string rule_id = 7;
+}
+message PolicyDecisionRequest {
+  string request_id = 1;
+  string rule_id = 2;
+  .antigravity.localharness.PreToolArgs tool_args = 3;
+}
+message PolicyDecisionResponse {
+  string request_id = 1;
+  .antigravity.localharness.PolicyEvaluationOutcome outcome = 2;
+  string deny_reason = 3;
 }
