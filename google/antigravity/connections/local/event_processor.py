@@ -31,6 +31,7 @@ from google.antigravity.connections.local.local_connection_config import normali
 from google.antigravity.connections.local.local_connection_config import WIRE_PATH_ARGUMENT_KEYS
 from google.antigravity.hooks import hook_runner as h_runner
 from google.antigravity.hooks import hooks
+from google.antigravity.hooks import policy as policy_lib
 from google.antigravity.tools import tool_runner as t_runner
 
 _ANY_ADAPTER = pydantic.TypeAdapter(Any)
@@ -359,10 +360,14 @@ class LocalHarnessEventProcessor:
       ],
       hook_runner: h_runner.HookRunner | None = None,
       tool_runner: t_runner.ToolRunner | None = None,
+      dynamic_policy_map: dict[str, policy_lib.Policy] | None = None,
   ):
     self._send_input_event = send_input_event_fn
     self._hook_runner = hook_runner
     self._tool_runner = tool_runner
+    self._dynamic_policy_map: dict[str, policy_lib.Policy] = (
+        dynamic_policy_map or {}
+    )
     self.step_queue = asyncio.Queue()
     self.is_idle = asyncio.Event()
     self.is_idle.set()
@@ -405,6 +410,12 @@ class LocalHarnessEventProcessor:
 
   async def process_event(self, event: localharness_pb2.OutputEvent) -> None:
     """Processes OutputEvents from the harness, routes steps, and dispatches tools."""
+    if event.HasField("policy_decision_request"):
+      self._run_in_background(
+          self._handle_policy_decision_request(event.policy_decision_request)
+      )
+      return
+
     if event.HasField("call_hook_request"):
       if self._hook_router:
         self._run_in_background(
@@ -805,3 +816,93 @@ class LocalHarnessEventProcessor:
         )
       input_event = localharness_pb2.InputEvent(tool_response=response)
       await self._send_input_event(input_event)
+
+  # ---------------------------------------------------------------------------
+  # Dynamic policy evaluation
+  # ---------------------------------------------------------------------------
+
+  async def _handle_policy_decision_request(
+      self, request: localharness_pb2.PolicyDecisionRequest
+  ) -> None:
+    """Evaluates a dynamic policy rule and sends the decision response."""
+    rule_id = request.rule_id
+    p = self._dynamic_policy_map.get(rule_id)
+
+    if p is None:
+      logging.error("Unknown policy rule_id: %s", rule_id)
+      await self._send_policy_decision_response(
+          request.request_id,
+          outcome=localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY,
+          deny_reason=f"Unknown rule_id: {rule_id}",
+      )
+      return
+
+    try:
+      args_dict = json.loads(request.tool_args.arguments_json or "{}")
+    except json.JSONDecodeError:
+      args_dict = {}
+
+    tool_call = types.ToolCall(
+        name=request.tool_args.tool_name,
+        args=args_dict,
+        server_name=request.tool_args.server_name or None,
+    )
+
+    try:
+      # Evaluate the `when` predicate if present.
+      if p.when is not None:
+        predicate_matched = await policy_lib._evaluate_predicate(p, tool_call)
+        if not predicate_matched:
+          await self._send_policy_decision_response(
+              request.request_id,
+              outcome=localharness_pb2.POLICY_EVALUATION_OUTCOME_NO_MATCH,
+          )
+          return
+
+      # Apply the decision.
+      if p.decision == policy_lib.Decision.ASK_USER:
+        allow = await policy_lib._execute_ask_user(p, tool_call)
+        await self._send_policy_decision_response(
+            request.request_id,
+            outcome=localharness_pb2.POLICY_EVALUATION_OUTCOME_ALLOW
+            if allow
+            else localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY,
+            deny_reason=""
+            if allow
+            else f"Denied by user ({p.name or p.tool}).",
+        )
+      elif p.decision == policy_lib.Decision.DENY:
+        await self._send_policy_decision_response(
+            request.request_id,
+            outcome=localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY,
+            deny_reason=f"Denied by policy '{p.name or p.tool}'.",
+        )
+      elif p.decision == policy_lib.Decision.APPROVE:
+        await self._send_policy_decision_response(
+            request.request_id,
+            outcome=localharness_pb2.POLICY_EVALUATION_OUTCOME_ALLOW,
+        )
+    except Exception as e:  # pylint: disable=broad-except
+      logging.exception("Policy evaluation failed for rule_id=%s", rule_id)
+      await self._send_policy_decision_response(
+          request.request_id,
+          outcome=localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY,
+          deny_reason=f"Policy evaluation error: {e}",
+      )
+
+  async def _send_policy_decision_response(
+      self,
+      request_id: str,
+      *,
+      outcome: "localharness_pb2.PolicyEvaluationOutcome",
+      deny_reason: str = "",
+  ) -> None:
+    """Sends a PolicyDecisionResponse back to the localharness."""
+    resp = localharness_pb2.PolicyDecisionResponse(
+        request_id=request_id,
+        outcome=outcome,
+        deny_reason=deny_reason,
+    )
+    await self._send_input_event(
+        localharness_pb2.InputEvent(policy_decision_response=resp)
+    )

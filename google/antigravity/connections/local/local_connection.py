@@ -241,6 +241,7 @@ class LocalConnection(connection.Connection):
       initial_history: Sequence[types.Step] | None = None,
       env: dict[str, str] | None = None,
       debug_config: connection.DebugConfig | None = None,
+      dynamic_policy_map: dict[str, "policy.Policy"] | None = None,
   ):
     self._hook_runner = hook_runner
     self._process = process
@@ -260,6 +261,7 @@ class LocalConnection(connection.Connection):
         send_input_event_fn=self._send_input_event,
         hook_runner=hook_runner,
         tool_runner=tool_runner,
+        dynamic_policy_map=dynamic_policy_map,
     )
 
     self._reader_task = asyncio.create_task(self._ws_reader_loop())
@@ -1195,6 +1197,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
         initial_history=initial_history,
         env=self._env,
         debug_config=self._debug_config,
+        dynamic_policy_map=self._dynamic_policy_map or None,
     )
     self._connection._start_stderr_reader(process.stderr)
 

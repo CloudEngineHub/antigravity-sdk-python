@@ -539,5 +539,179 @@ class LocalHarnessEventProcessorTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(step.tool_calls[0].name, "my_remote_tool")
     self.assertEqual(step.type, types.StepType.TOOL_CALL)
 
+import asyncio
+import json
+
+from google.antigravity.hooks import policy
+
+
+def _make_policy_decision_request(
+    request_id: str = "req-1",
+    rule_id: str = "rule_0",
+    tool_name: str = "run_command",
+    arguments_json: str = "{}",
+    server_name: str = "",
+) -> localharness_pb2.OutputEvent:
+  return localharness_pb2.OutputEvent(
+      policy_decision_request=localharness_pb2.PolicyDecisionRequest(
+          request_id=request_id,
+          rule_id=rule_id,
+          tool_args=localharness_pb2.PreToolArgs(
+              tool_name=tool_name,
+              arguments_json=arguments_json,
+              server_name=server_name,
+          ),
+      )
+  )
+
+
+class PolicyDecisionTest(unittest.IsolatedAsyncioTestCase):
+  """Tests for PolicyDecisionRequest handling in the event processor."""
+
+  async def _process_and_get_response(
+      self, dynamic_policy_map, event
+  ) -> localharness_pb2.PolicyDecisionResponse:
+    """Helper: creates a processor, processes an event, returns the response."""
+    send_mock = mock.AsyncMock()
+    processor = event_processor.LocalHarnessEventProcessor(
+        send_input_event_fn=send_mock,
+        dynamic_policy_map=dynamic_policy_map,
+    )
+    await processor.process_event(event)
+    # Let the background task complete.
+    await asyncio.sleep(0.01)
+    send_mock.assert_called_once()
+    input_event = send_mock.call_args[0][0]
+    return input_event.policy_decision_response
+
+  async def test_when_predicate_matches_deny(self):
+    """when returns True + DENY -> OUTCOME_DENY."""
+    p = policy.deny("run_command", when=lambda args: True, name="block-all")
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(resp.request_id, "req-1")
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY
+    )
+    self.assertIn("block-all", resp.deny_reason)
+
+  async def test_when_predicate_no_match(self):
+    """when returns False -> OUTCOME_NO_MATCH."""
+    p = policy.deny("run_command", when=lambda args: False)
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_NO_MATCH
+    )
+
+  async def test_when_predicate_matches_allow(self):
+    """when returns True + ALLOW -> OUTCOME_ALLOW."""
+    p = policy.allow("run_command", when=lambda args: True)
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_ALLOW
+    )
+
+  async def test_ask_user_approve(self):
+    """ASK_USER handler returns True -> OUTCOME_ALLOW."""
+    p = policy.ask_user("run_command", handler=lambda tc: True, name="ask-test")
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_ALLOW
+    )
+    self.assertEqual(resp.deny_reason, "")
+
+  async def test_ask_user_deny(self):
+    """ASK_USER handler returns False -> OUTCOME_DENY."""
+    p = policy.ask_user(
+        "run_command", handler=lambda tc: False, name="ask-deny"
+    )
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY
+    )
+    self.assertIn("Denied by user", resp.deny_reason)
+
+  async def test_ask_user_with_when_no_match(self):
+    """ASK_USER + when=False -> OUTCOME_NO_MATCH (handler never called)."""
+    handler_mock = mock.Mock(return_value=True)
+    p = policy.ask_user(
+        "run_command", handler=handler_mock, when=lambda args: False
+    )
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_NO_MATCH
+    )
+    handler_mock.assert_not_called()
+
+  async def test_unknown_rule_id_fails_closed(self):
+    """Unknown rule_id -> OUTCOME_DENY."""
+    event = _make_policy_decision_request(rule_id="nonexistent")
+    resp = await self._process_and_get_response({}, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY
+    )
+    self.assertIn("Unknown rule_id", resp.deny_reason)
+
+  async def test_predicate_exception_fails_closed(self):
+    """Predicate raises exception -> OUTCOME_DENY."""
+
+    def bad_predicate(args):
+      raise ValueError("boom")
+
+    p = policy.deny("run_command", when=bad_predicate)
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY
+    )
+    self.assertIn("Policy evaluation error", resp.deny_reason)
+
+  async def test_async_ask_user_handler(self):
+    """Async ask_user handler works."""
+
+    async def async_handler(tc):
+      return True
+
+    p = policy.ask_user("run_command", handler=async_handler)
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(rule_id="rule_0")
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_ALLOW
+    )
+
+  async def test_when_predicate_receives_args(self):
+    """Predicate receives parsed tool arguments."""
+    captured = {}
+
+    def capture_predicate(args):
+      captured.update(args)
+      return True
+
+    p = policy.deny("run_command", when=capture_predicate)
+    _, pmap = policy._to_policy_config_proto([p])
+    event = _make_policy_decision_request(
+        rule_id="rule_0",
+        arguments_json=json.dumps({"CommandLine": "echo hello"}),
+    )
+    resp = await self._process_and_get_response(pmap, event)
+    self.assertEqual(
+        resp.outcome, localharness_pb2.POLICY_EVALUATION_OUTCOME_DENY
+    )
+    self.assertEqual(captured.get("CommandLine"), "echo hello")
+
+
 if __name__ == "__main__":
   absltest.main()
