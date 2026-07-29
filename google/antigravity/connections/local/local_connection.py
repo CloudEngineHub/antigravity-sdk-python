@@ -37,11 +37,11 @@ from typing_extensions import override
 import websockets
 
 from google.antigravity.proto import localharness_pb2
-
 from google.antigravity import types
 from google.antigravity.connections import connection
 from google.antigravity.connections.local import event_processor
 from google.antigravity.hooks import hook_runner as h_runner
+from google.antigravity.hooks import policy
 from google.antigravity.tools import tool_runner as t_runner
 
 LocalConnectionStep = event_processor.LocalConnectionStep
@@ -736,6 +736,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       subagents: list[types.SubagentConfig] | None = None,
       debug_config: connection.DebugConfig | None = None,
       retry_config: types.RetryConfig | None = None,
+      policies: list[policy.Policy] | None = None,
   ):
     """Initializes the instance.
 
@@ -756,6 +757,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       subagents: Optional list of static subagent configurations.
       debug_config: Optional debug configuration for the connection.
       retry_config: Optional retry configuration for model API and outputs.
+      policies: Optional list of policy rules for the Go evaluator.
     """
     self._binary_path = _get_default_binary_path()
     self._tool_runner = tool_runner
@@ -767,6 +769,9 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
     self._env = env
     self._debug_config = debug_config
     self._retry_config = retry_config
+    self._policies = policies or []
+    # Maps rule_id -> Policy for dynamic rules evaluated during tool execution.
+    self._dynamic_policy_map: dict[str, policy.Policy] = {}
 
     # Normalize str shorthand to SystemInstructions model.
     self._system_instructions: types.SystemInstructions | None = None
@@ -990,6 +995,16 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       retry_proto = build_retry_config_proto(self._retry_config)
       if retry_proto:
         harness_config.retry_config.CopyFrom(retry_proto)
+
+    # TODO(b/abhipatel): Uncomment in CL 7 when Python-side policy enforcement
+    # (policy.enforce) is removed from agent.py, activating the native Go
+    # localharness policy engine.
+    # if self._policies:
+    #   policy_config, self._dynamic_policy_map = (
+    #       policy._to_policy_config_proto(self._policies)
+    #   )
+    #   harness_config.policy_config.CopyFrom(policy_config)
+
     return harness_config
 
   def _get_enabled_hooks(self) -> list[Any]:

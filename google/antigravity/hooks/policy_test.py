@@ -35,6 +35,7 @@ import unittest
 from absl.testing import absltest
 import pydantic
 
+from google.antigravity.proto import localharness_pb2
 from google.antigravity import types
 from google.antigravity.hooks import hooks
 from google.antigravity.hooks import policy
@@ -1052,6 +1053,168 @@ class McpPolicyTest(unittest.IsolatedAsyncioTestCase):
     # It should NOT match the 'math/*' prefix wildcard.
     result = await hook.run(ctx, _make_tool_call("calc", server_name="unknown"))
     self.assertTrue(result.allow)  # Default open since no policy matches
+
+
+class ToPolicyConfigProtoTest(absltest.TestCase):
+  """Tests for to_policy_config_proto serialization."""
+
+  def test_empty_policies(self):
+    """Empty policy list produces config with no rules."""
+    config, dynamic_policy_map = policy._to_policy_config_proto([])
+    self.assertEmpty(config.rules)
+    self.assertEmpty(dynamic_policy_map)
+
+  def test_static_deny(self):
+    """Static deny produces a non-dynamic rule."""
+    config, dynamic_policy_map = policy._to_policy_config_proto(
+        [policy.deny("run_command", name="block_cmd")]
+    )
+    self.assertLen(config.rules, 1)
+    rule = config.rules[0]
+    self.assertEqual(rule.tool, "run_command")
+    self.assertEqual(rule.server_name, "")
+    self.assertEqual(rule.decision, localharness_pb2.POLICY_DECISION_DENY)
+    self.assertEqual(rule.name, "block_cmd")
+    self.assertFalse(rule.is_dynamic)
+    self.assertEqual(rule.rule_id, "")
+    self.assertEmpty(dynamic_policy_map)
+
+  def test_unnamed_policy_defaults_to_tool(self):
+    """Unnamed policy gets name defaulted to tool target."""
+    config, _ = policy._to_policy_config_proto([policy.deny("run_command")])
+    self.assertLen(config.rules, 1)
+    self.assertEqual(config.rules[0].name, "run_command")
+
+  def test_static_allow_wildcard(self):
+    """Static allow('*') produces global wildcard."""
+    config, _ = policy._to_policy_config_proto([policy.allow("*")])
+    self.assertLen(config.rules, 1)
+    rule = config.rules[0]
+    self.assertEqual(rule.tool, "*")
+    self.assertEqual(rule.server_name, "")
+    self.assertEqual(rule.decision, localharness_pb2.POLICY_DECISION_ALLOW)
+    self.assertFalse(rule.is_dynamic)
+
+  def test_dynamic_when_predicate(self):
+    """Rule with `when` predicate is dynamic."""
+    pred = lambda args: "rm" in args.get("CommandLine", "")
+    config, dynamic_policy_map = policy._to_policy_config_proto(
+        [policy.deny("run_command", when=pred, name="block_rm")]
+    )
+    self.assertLen(config.rules, 1)
+    rule = config.rules[0]
+    self.assertTrue(rule.is_dynamic)
+    self.assertEqual(rule.rule_id, "rule_0")
+    self.assertIn("rule_0", dynamic_policy_map)
+    self.assertEqual(dynamic_policy_map["rule_0"].name, "block_rm")
+    self.assertIs(dynamic_policy_map["rule_0"].when, pred)
+
+  def test_dynamic_ask_user(self):
+    """ASK_USER rules are always dynamic."""
+    handler = lambda tc: True
+    config, dynamic_policy_map = policy._to_policy_config_proto(
+        [policy.ask_user("run_command", handler=handler, name="confirm")]
+    )
+    self.assertLen(config.rules, 1)
+    rule = config.rules[0]
+    self.assertTrue(rule.is_dynamic)
+    self.assertEqual(rule.decision, localharness_pb2.POLICY_DECISION_ASK_USER)
+    self.assertIn(rule.rule_id, dynamic_policy_map)
+
+  def test_mcp_specific_tool(self):
+    """MCP 'server/tool' is decomposed into separate fields."""
+    mcp = types.McpStdioServer(name="my_server", command="cmd")
+    policies = policy.deny(mcp, mcp_tools=["dangerous_tool"])
+    config, _ = policy._to_policy_config_proto(policies)
+    self.assertLen(config.rules, 1)
+    rule = config.rules[0]
+    self.assertEqual(rule.tool, "dangerous_tool")
+    self.assertEqual(rule.server_name, "my_server")
+
+  def test_mcp_prefix_wildcard(self):
+    """MCP 'server/*' decomposes to tool='*', server_name='server'."""
+    mcp = types.McpStdioServer(name="my_server", command="cmd")
+    policies = policy.deny(mcp)  # No mcp_tools = server-wide wildcard
+    config, _ = policy._to_policy_config_proto(policies)
+    self.assertLen(config.rules, 1)
+    rule = config.rules[0]
+    self.assertEqual(rule.tool, "*")
+    self.assertEqual(rule.server_name, "my_server")
+
+  def test_confirm_run_command_no_handler(self):
+    """confirm_run_command() without handler produces 2 static rules."""
+    config, dynamic_policy_map = policy._to_policy_config_proto(
+        policy.confirm_run_command()
+    )
+    self.assertLen(config.rules, 2)
+    # First rule: deny run_command
+    self.assertEqual(config.rules[0].tool, "run_command")
+    self.assertEqual(
+        config.rules[0].decision, localharness_pb2.POLICY_DECISION_DENY
+    )
+    self.assertFalse(config.rules[0].is_dynamic)
+    # Second rule: allow *
+    self.assertEqual(config.rules[1].tool, "*")
+    self.assertEqual(
+        config.rules[1].decision, localharness_pb2.POLICY_DECISION_ALLOW
+    )
+    self.assertFalse(config.rules[1].is_dynamic)
+    self.assertEmpty(dynamic_policy_map)
+
+  def test_confirm_run_command_with_handler(self):
+    """confirm_run_command(handler) produces 1 dynamic + 1 static."""
+    handler = lambda tc: True
+    config, dynamic_policy_map = policy._to_policy_config_proto(
+        policy.confirm_run_command(handler=handler)
+    )
+    self.assertLen(config.rules, 2)
+    # First: ask_user (dynamic)
+    self.assertTrue(config.rules[0].is_dynamic)
+    self.assertEqual(
+        config.rules[0].decision, localharness_pb2.POLICY_DECISION_ASK_USER
+    )
+    # Second: allow * (static)
+    self.assertFalse(config.rules[1].is_dynamic)
+    self.assertLen(dynamic_policy_map, 1)
+
+  def test_rule_ordering_preserved(self):
+    """Proto rules preserve the declaration order of input policies."""
+    config, _ = policy._to_policy_config_proto([
+        policy.deny("a"),
+        policy.allow("b"),
+        policy.deny("c"),
+    ])
+    self.assertLen(config.rules, 3)
+    self.assertEqual(config.rules[0].tool, "a")
+    self.assertEqual(config.rules[1].tool, "b")
+    self.assertEqual(config.rules[2].tool, "c")
+
+  def test_nested_policies_flattened(self):
+    """Nested policy lists (from MCP builders) are correctly flattened."""
+    mcp = types.McpStdioServer(name="srv", command="cmd")
+    config, _ = policy._to_policy_config_proto([
+        policy.deny(mcp, mcp_tools=["t1", "t2"]),
+        policy.allow("read_file"),
+    ])
+    self.assertLen(config.rules, 3)
+    self.assertEqual(config.rules[0].tool, "t1")
+    self.assertEqual(config.rules[1].tool, "t2")
+    self.assertEqual(config.rules[2].tool, "read_file")
+
+  def test_dynamic_policy_map_only_dynamic(self):
+    """Only dynamic rules appear in the dynamic_policy_map."""
+    config, dynamic_policy_map = policy._to_policy_config_proto([
+        policy.deny("a"),  # static
+        policy.deny("b", when=lambda args: True),  # dynamic
+        policy.allow("c"),  # static
+        policy.ask_user("d", handler=lambda tc: True),  # dynamic
+    ])
+    self.assertLen(config.rules, 4)
+    self.assertLen(dynamic_policy_map, 2)
+    self.assertIn("rule_1", dynamic_policy_map)  # index 1 = deny("b", when=...)
+    self.assertIn("rule_3", dynamic_policy_map)  # index 3 = ask_user("d", ...)
+    self.assertNotIn("rule_0", dynamic_policy_map)
+    self.assertNotIn("rule_2", dynamic_policy_map)
 
 
 if __name__ == "__main__":

@@ -327,4 +327,5 @@ class LocalAgentConfig(BaseLocalAgentConfig):
         subagents=self.subagents,
         debug_config=self.debug_config,
         retry_config=self.retry_config,
+        policies=list(self.policies),
     )

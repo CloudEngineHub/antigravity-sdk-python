@@ -80,6 +80,7 @@ from typing import Any, Union, overload
 
 import pydantic
 
+from google.antigravity.proto import localharness_pb2
 from google.antigravity import types
 from google.antigravity.hooks import hooks
 
@@ -826,6 +827,87 @@ def _flatten_policies(
           f"Expected Policy or Sequence of Policies, got {type(p)}"
       )
   return flat
+
+
+# ---------------------------------------------------------------------------
+# Proto serialization
+# ---------------------------------------------------------------------------
+
+_DECISION_TO_PROTO = {
+    Decision.APPROVE: localharness_pb2.POLICY_DECISION_ALLOW,
+    Decision.DENY: localharness_pb2.POLICY_DECISION_DENY,
+    Decision.ASK_USER: localharness_pb2.POLICY_DECISION_ASK_USER,
+}
+
+
+# TODO(b/539696157): Add explicit server_name field to Policy dataclass to
+# eliminate slashed "server/tool" string packing and remove _parse_tool_target.
+def _parse_tool_target(tool: str) -> tuple[str, str]:
+  """Decomposes 'server/tool' format into (tool_name, server_name) for proto.
+
+  Args:
+    tool: The tool target string (e.g., "run_command", "*", "server/tool",
+      "server/*").
+
+  Returns:
+    A (tool_name, server_name) tuple for the PolicyRule proto fields.
+  """
+  if tool == _WILDCARD:
+    return ("*", "")
+  if "/" in tool:
+    server, tool_name = tool.split("/", 1)
+    return (tool_name, server)
+  return (tool, "")
+
+
+def _to_policy_config_proto(
+    policies: Sequence[Policy | Sequence[Policy]],
+) -> tuple[localharness_pb2.PolicyConfig, dict[str, Policy]]:
+  """Serializes Python Policy objects into a PolicyConfig proto.
+
+  Static rules (no condition function, not ASK_USER) are handled entirely by
+  localharness with zero wire roundtrips. Dynamic rules (with dynamic callbacks
+  or ASK_USER handlers) are tagged with a rule_id and require the SDK to
+  evaluate the condition when localharness sends a PolicyDecisionRequest.
+
+  Args:
+    policies: The policies to serialize (can be nested).
+
+  Returns:
+    A tuple of (PolicyConfig proto, dynamic_policy_map). The dynamic_policy_map
+    maps rule_id -> Policy for dynamic rules, used by the event processor
+    to handle incoming PolicyDecisionRequest messages.
+  """
+  flat = _flatten_policies(policies)
+
+  dynamic_policy_map: dict[str, Policy] = {}
+  proto_rules: list[localharness_pb2.PolicyRule] = []
+
+  for i, p in enumerate(flat):
+    # TODO(b/539696157): Remove _parse_tool_target once Policy has server_name.
+    tool_name, server_name = _parse_tool_target(p.tool)
+    is_dynamic = p.when is not None or p.decision == Decision.ASK_USER
+
+    rule_id = ""
+    if is_dynamic:
+      rule_id = f"rule_{i}"
+      dynamic_policy_map[rule_id] = p
+
+    proto_rules.append(
+        localharness_pb2.PolicyRule(
+            tool=tool_name,
+            server_name=server_name,
+            decision=_DECISION_TO_PROTO[p.decision],
+            name=p.name or p.tool,
+            is_dynamic=is_dynamic,
+            rule_id=rule_id,
+        )
+    )
+
+  config = localharness_pb2.PolicyConfig(
+      rules=proto_rules,
+  )
+  return config, dynamic_policy_map
 
 
 # ---------------------------------------------------------------------------
