@@ -1171,7 +1171,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       )
       await ws.send(json_format.MessageToJson(init_event))
       raw_init_resp = await ws.recv()
-      initial_history = []
+      initial_history: list[types.Step] = []
       if isinstance(raw_init_resp, (str, bytes)):
         init_resp_event = localharness_pb2.OutputEvent()
         json_format.Parse(raw_init_resp, init_resp_event)
