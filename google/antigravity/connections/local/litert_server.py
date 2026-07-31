@@ -248,6 +248,9 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
             messages=context_messages,
             tools=litert_tools or None,
             automatic_tool_calling=False,
+            max_output_tokens=16384,
+            thinking_config=litert_lm.ThinkingConfig(),
+            constrained_decoding_config=litert_lm.ConstrainedDecodingConfig(),
         ) as conv:
           if stream:
             self._stream_response(conv, prompt, server.model_name)
