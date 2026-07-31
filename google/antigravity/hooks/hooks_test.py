@@ -105,6 +105,210 @@ class BaseHookTest(unittest.IsolatedAsyncioTestCase):
     await hook.run(ctx, step)
     self.assertTrue(called)
 
+  async def test_decorator_pre_turn(self):
+    """Verifies @pre_turn decorator works."""
+    called_with = None
+
+    @hooks.pre_turn
+    async def my_hook(data):
+      nonlocal called_with
+      called_with = data
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertEqual(called_with, "prompt_data")
+
+  async def test_decorator_on_session_start(self):
+    """Verifies @on_session_start decorator works (pass_data=False)."""
+    called = False
+
+    @hooks.on_session_start
+    async def my_hook():
+      nonlocal called
+      called = True
+
+    ctx = hooks.HookContext()
+    await my_hook.run(ctx, None)
+    self.assertTrue(called)
+
+  async def test_decorator_pre_turn_with_context(self):
+    """Verifies @pre_turn decorator works when accepting context."""
+    called_with = None
+    context_passed = None
+
+    @hooks.pre_turn
+    async def my_hook(context, data):
+      nonlocal called_with, context_passed
+      called_with = data
+      context_passed = context
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertEqual(called_with, "prompt_data")
+    self.assertIs(context_passed, ctx)
+
+  async def test_decorator_on_session_start_with_context(self):
+    """Verifies @on_session_start decorator works when accepting context."""
+    context_passed = None
+
+    @hooks.on_session_start
+    async def my_hook(context):
+      nonlocal context_passed
+      context_passed = context
+
+    ctx = hooks.HookContext()
+    await my_hook.run(ctx, None)
+    self.assertIs(context_passed, ctx)
+
+  async def test_decorator_pre_turn_compatibility_edge_case(self):
+    """Verifies that 2-argument hooks without 'context' as first arg still work."""
+    called_with = None
+    extra_val = None
+
+    @hooks.pre_turn
+    async def my_hook(data, extra="default"):
+      nonlocal called_with, extra_val
+      called_with = data
+      extra_val = extra
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertEqual(called_with, "prompt_data")
+    self.assertEqual(extra_val, "default")
+
+  async def test_decorator_pre_turn_with_type_hint(self):
+    """Verifies @pre_turn decorator works when accepting context named 'ctx' with type hint."""
+    called_with = None
+    context_passed = None
+
+    @hooks.pre_turn
+    async def my_hook(ctx: hooks.HookContext, data):
+      nonlocal called_with, context_passed
+      called_with = data
+      context_passed = ctx
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertEqual(called_with, "prompt_data")
+    self.assertIs(context_passed, ctx)
+
+  async def test_decorator_on_session_start_with_type_hint(self):
+    """Verifies @on_session_start works when accepting context named 'ctx' with type hint."""
+    context_passed = None
+
+    @hooks.on_session_start
+    async def my_hook(ctx: hooks.HookContext):
+      nonlocal context_passed
+      context_passed = ctx
+
+    ctx = hooks.HookContext()
+    await my_hook.run(ctx, None)
+    self.assertIs(context_passed, ctx)
+
+  async def test_decorator_pre_turn_reversed_order(self):
+    """Verifies @pre_turn works when context is placed second with type hint."""
+    called_with = None
+    context_passed = None
+
+    @hooks.pre_turn
+    async def my_hook(data, ctx: hooks.HookContext):
+      nonlocal called_with, context_passed
+      called_with = data
+      context_passed = ctx
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertEqual(called_with, "prompt_data")
+    self.assertIs(context_passed, ctx)
+
+  async def test_decorator_pre_turn_with_string_type_hint(self):
+    """Verifies @pre_turn works when context has a string type hint."""
+    called_with = None
+    context_passed = None
+
+    @hooks.pre_turn
+    async def my_hook(ctx: "HookContext", data):
+      nonlocal called_with, context_passed
+      called_with = data
+      context_passed = ctx
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertEqual(called_with, "prompt_data")
+    self.assertIs(context_passed, ctx)
+
+  def test_decorator_invalid_signature_fails_early(self):
+    """Verifies that invalid decorator signatures raise TypeError early."""
+    # pylint: disable=unused-argument
+
+    # pre_turn expects data (pass_data=True). If we define with 0 params, it
+    # should fail.
+    with self.assertRaises(TypeError):
+      @hooks.pre_turn
+      async def _no_args():
+        pass
+
+    # pre_turn with too many required arguments (without defaults)
+    with self.assertRaises(TypeError):
+      @hooks.pre_turn
+      async def _too_many(ctx: hooks.HookContext, data, extra_required):
+        pass
+
+    # on_session_start does not expect data (pass_data=False).
+    # If we define it with 2 params (no defaults), it should fail.
+    with self.assertRaises(TypeError):
+      @hooks.on_session_start
+      async def _bad_session(ctx: hooks.HookContext, extra_required):
+        pass
+
+  async def test_decorator_pre_turn_optional_param_before_context(self):
+    """Verifies @pre_turn works with optional parameter before context."""
+    called_with = None
+    context_passed = None
+    extra_val = None
+
+    @hooks.pre_turn
+    async def my_hook(data, extra="default", ctx: hooks.HookContext = None):
+      nonlocal called_with, context_passed, extra_val
+      called_with = data
+      context_passed = ctx
+      extra_val = extra
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertEqual(called_with, "prompt_data")
+    self.assertEqual(extra_val, "default")
+    self.assertIs(context_passed, ctx)
+
+  async def test_decorator_pre_turn_context_only(self):
+    """Verifies @pre_turn works when only accepting context (ignoring data)."""
+    context_passed = None
+
+    @hooks.pre_turn
+    async def my_hook(ctx: hooks.HookContext):
+      nonlocal context_passed
+      context_passed = ctx
+      return hooks.HookResult(allow=True)
+
+    ctx = hooks.HookContext()
+    res = await my_hook.run(ctx, "prompt_data")
+    self.assertTrue(res.allow)
+    self.assertIs(context_passed, ctx)
+
 
 if __name__ == "__main__":
   unittest.main()

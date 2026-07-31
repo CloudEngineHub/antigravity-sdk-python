@@ -16,10 +16,23 @@
 
 This module defines the interface for Hooks and the standard result types
 returned by their lifecycle callbacks.
+
+Hooks can be defined as classes or by using decorators (e.g. `@pre_turn`).
+Decorators automatically wrap functions into Hook instances. Wrapped functions
+can optionally accept the hook's context:
+- By naming the parameter `context`
+  (e.g. `async def my_hook(context, data)`)
+- By type-hinting it as `HookContext`
+  (e.g. `async def my_hook(ctx: HookContext, data)`)
+The context can be placed in any position (first or second).
+
 """
+
 from __future__ import annotations
 
 import abc
+import functools
+import inspect
 from typing import Any, Generic, TypeVar
 
 from google.antigravity import types
@@ -221,36 +234,131 @@ class OnCompactionHook(InspectHook[types.Step]):
 # --- Decorator Factory ---
 
 
+def _is_context_parameter(param: inspect.Parameter) -> bool:
+  """Checks if a parameter represents the HookContext."""
+  if param.name == "context":
+    return True
+  annotation = param.annotation
+  if annotation is inspect.Parameter.empty:
+    return False
+  if annotation == HookContext:
+    return True
+  if isinstance(annotation, str):
+    simple_name = annotation.split(".")[-1]
+    if simple_name == "HookContext":
+      return True
+  return False
+
+
 def _make_hook_decorator(hook_cls: type[Any], *, pass_data: bool = True):
   """Creates a decorator that wraps an async function as a Hook subclass.
 
   Each decorator-created hook delegates its ``run()`` to the wrapped
   function and remains directly callable for convenience.
 
+  If the wrapped function accepts `context` (either by name 'context' or
+  by type hint matching HookContext), the HookContext will be passed to it.
+
   Args:
     hook_cls: The concrete Hook class to subclass.
     pass_data: If True, the wrapped function receives the hook's ``data``
       argument.  If False (e.g. session start/end), it is called with no
-      arguments.
+      arguments by default.
 
   Returns:
     A decorator that converts an async function into a Hook instance.
   """
 
+  class _FunctionHookWithData(hook_cls):
+    """Internal hook implementation wrapping a decorated function."""
+
+    def __init__(self, f, call_fn):
+      self.f = f
+      self._call_fn = call_fn
+      functools.update_wrapper(self, f)
+
+    async def run(self, context: HookContext, data: Any) -> Any:
+      return await self._call_fn(context, data)
+
+    async def __call__(self, *args, **kwargs):
+      return await self.f(*args, **kwargs)
+
+  class _FunctionHookNoData(hook_cls):
+    """Internal hook implementation wrapping a decorated function."""
+
+    def __init__(self, f, call_fn):
+      self.f = f
+      self._call_fn = call_fn
+      functools.update_wrapper(self, f)
+
+    async def run(self, context: HookContext, data: Any) -> Any:
+      return await self._call_fn(context)
+
+    async def __call__(self, *args, **kwargs):
+      return await self.f(*args, **kwargs)
+
   def decorator(func):
+    sig = inspect.signature(func)
+    params = list(sig.parameters.values())
+    num_params = len(params)
 
-    class _FunctionHook(hook_cls):
+    # Find if there is a context parameter
+    context_idx = -1
+    for i, p in enumerate(params):
+      if _is_context_parameter(p):
+        context_idx = i
+        break
 
-      def __init__(self, f):
-        self.f = f
+    is_stateful = context_idx != -1
 
-      async def run(self, context: HookContext, data: Any) -> Any:
-        return await self.f(data) if pass_data else await self.f()
+    # Early validation of function signature
+    try:
+      if pass_data:
+        if is_stateful:
+          if num_params >= 2:
+            if context_idx == 0:
+              sig.bind(object(), object())
+            else:
+              sig.bind(object(), **{params[context_idx].name: object()})
+          else:
+            sig.bind(object())
+        else:
+          sig.bind(object())
+      else:
+        if is_stateful:
+          sig.bind(object())
+        else:
+          sig.bind()
+    except TypeError as e:
+      raise TypeError(
+          f"Invalid signature for hook '{func.__name__}': {e}"
+      ) from e
 
-      async def __call__(self, *args, **kwargs):
-        return await self.f(*args, **kwargs)
+    if pass_data:
+      if is_stateful:
+        if num_params >= 2:
+          if context_idx == 0:
+            call_fn_data = func
+          else:
+            # Pass context as keyword argument to avoid positional conflicts
+            context_name = params[context_idx].name
+            call_fn_data = lambda ctx, d: func(d, **{context_name: ctx})
+        else:
+          # Only 1 param, and it is context (ignoring data)
+          call_fn_data = lambda ctx, d: func(ctx)
+      else:
+        # Stateless, expects data
+        call_fn_data = lambda ctx, d: func(d)
 
-    return _FunctionHook(func)
+      return _FunctionHookWithData(func, call_fn_data)
+
+    else:
+      if is_stateful:
+        call_fn_nodata = func
+      else:
+        call_fn_nodata = lambda ctx: func()
+
+      return _FunctionHookNoData(func, call_fn_nodata)
 
   return decorator
 
