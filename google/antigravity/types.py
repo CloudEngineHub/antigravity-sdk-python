@@ -1124,6 +1124,31 @@ def _read_file_safely(path: str | pathlib.Path) -> bytes:
     raise OSError(f"Failed to read file at path '{file_path}': {exc}") from exc
 
 
+def _read_file_and_guess_mime(
+    path: str | pathlib.Path,
+) -> tuple[bytes, str]:
+  """Reads a file and guesses its MIME type.
+
+  Args:
+      path: The file path to read.
+
+  Returns:
+      A tuple containing the file contents as bytes and the guessed MIME type
+      as a string.
+
+  Raises:
+      ValueError: If the MIME type cannot be guessed.
+  """
+  file_path = pathlib.Path(path)
+  data = _read_file_safely(file_path)
+  mime_guess, _ = mimetypes.guess_type(file_path)
+  if not mime_guess:
+    raise ValueError(
+        f"Could not infer a valid MIME type for extension: '{file_path.suffix}'"
+    )
+  return data, mime_guess
+
+
 class _BaseMedia(pydantic.BaseModel):
   """Base class for all rich multimedia content attachment primitives."""
 
@@ -1146,17 +1171,10 @@ class _BaseMedia(pydantic.BaseModel):
     Returns:
         The instantiated media object.
     """
-    file_path = pathlib.Path(path)
-    data = _read_file_safely(file_path)
-    mime_guess, _ = mimetypes.guess_type(file_path)
-    if not mime_guess:
-      raise ValueError(
-          "Could not infer a valid MIME type for extension: "
-          f"'{file_path.suffix}'"
-      )
+    data, mime_type = _read_file_and_guess_mime(path)
     return cls(
         data=data,
-        mime_type=mime_guess,
+        mime_type=mime_type,
         description=description,
     )
 
@@ -1267,16 +1285,8 @@ def from_file(
   Raises:
       ValueError: If the MIME type cannot be inferred or is unsupported.
   """
-  file_path = pathlib.Path(path)
-  data = _read_file_safely(file_path)
-
-  mime_guess, _ = mimetypes.guess_type(file_path)
-  if not mime_guess:
-    raise ValueError(
-        f"Could not infer a valid MIME type for extension: '{file_path.suffix}'"
-    )
-
-  return from_bytes(data, mime_guess, description)
+  data, mime_type = _read_file_and_guess_mime(path)
+  return from_bytes(data, mime_type, description)
 
 
 def from_bytes(
