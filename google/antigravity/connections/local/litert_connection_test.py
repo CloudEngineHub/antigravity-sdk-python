@@ -495,8 +495,11 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         model_path="/tmp/model.litertlm",
         workspaces=["/tmp/my_workspace"],
     )
-    self.assertGreater(len(config.policies), 0)
-    self.assertEqual(config.policies[0].name, "workspace_only")
+    # LiteRT uses localharness, which enforces workspace containment natively;
+    # config.policies contains only the 2 confirm_run_command policies.
+    self.assertEqual(len(config.policies), 2)
+    self.assertEqual(config.policies[0].tool, "run_command")
+    self.assertEqual(config.policies[1].tool, "*")
 
   @mock.patch(
       "google.antigravity.connections.local.litert_connection._check_gpu_acceleration_available"

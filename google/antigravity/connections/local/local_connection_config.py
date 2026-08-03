@@ -112,26 +112,6 @@ class BaseLocalAgentConfig(connection.AgentConfig):
       raise ValueError(f"app_data_dir must be an absolute path, got '{v}'")
     return v
 
-  @pydantic.model_validator(mode="after")
-  def _apply_workspace_policies(self) -> "BaseLocalAgentConfig":
-    """Prepends workspace-scoping policies when workspaces are configured."""
-    other_policies = [
-        p for p in self.policies if getattr(p, "name", "") != "workspace_only"
-    ]
-    if self.workspaces:
-      app_data_path = self.app_data_dir or DEFAULT_APP_DATA_DIR
-      resolved_app_data_dir = pathlib.Path(app_data_path).expanduser().resolve()
-      normalized_workspaces = [
-          normalize_wire_path(ws) for ws in self.workspaces
-      ]
-      allowed_paths = [*normalized_workspaces, str(resolved_app_data_dir)]
-      self.__dict__["policies"] = (
-          policy.workspace_only(allowed_paths) + other_policies
-      )
-    else:
-      self.__dict__["policies"] = other_policies
-    return self
-
   def _get_system_instructions(self) -> types.SystemInstructions | None:
     """Returns the system instructions, normalizing shorthand if needed."""
     if isinstance(self.system_instructions, str):
@@ -162,7 +142,7 @@ class LocalAgentConfig(BaseLocalAgentConfig):
   (including shell access), pass ``policies=[policy.allow_all()]``.
 
   When ``workspaces`` are configured, file tools are automatically
-  restricted to those directories via ``policy.workspace_only()``.
+  restricted to those directories by the policy evaluator.
   """
 
   # Top-level shorthand fields — flow into models.

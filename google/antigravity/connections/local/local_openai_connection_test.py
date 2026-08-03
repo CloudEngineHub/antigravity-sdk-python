@@ -81,14 +81,17 @@ class LocalOpenAIConnectionTest(unittest.TestCase):
     self.assertIsNone(openai_config.capabilities.disabled_tools)
 
   def test_local_openai_config_workspace_policies(self):
-    """Verify LocalOpenAIAgentConfig sets workspace_only policy when workspaces provided."""
+    """Verify LocalOpenAIAgentConfig does not prepend workspace_only policy."""
     config_openai = local_openai_connection_config.LocalOpenAIAgentConfig(
         base_url="http://localhost",
         model="m",
         workspaces=["/tmp/my_workspace"],
     )
-    self.assertGreater(len(config_openai.policies), 0)
-    self.assertEqual(config_openai.policies[0].name, "workspace_only")
+    # LocalOpenAI uses localharness for native workspace containment;
+    # config_openai.policies contains only the 2 confirm_run_command policies.
+    self.assertEqual(len(config_openai.policies), 2)
+    self.assertEqual(config_openai.policies[0].tool, "run_command")
+    self.assertEqual(config_openai.policies[1].tool, "*")
 
   def test_local_openai_config_mcp_servers_and_subagents_passed_to_strategy(
       self,
