@@ -611,6 +611,22 @@ class UsageMetadata(pydantic.BaseModel):
         + (other.total_token_count or 0),
     )
 
+  def __sub__(self, other: UsageMetadata) -> UsageMetadata:
+    if not isinstance(other, UsageMetadata):
+      return NotImplemented
+    return UsageMetadata(
+        prompt_token_count=(self.prompt_token_count or 0)
+        - (other.prompt_token_count or 0),
+        cached_content_token_count=(self.cached_content_token_count or 0)
+        - (other.cached_content_token_count or 0),
+        candidates_token_count=(self.candidates_token_count or 0)
+        - (other.candidates_token_count or 0),
+        thoughts_token_count=(self.thoughts_token_count or 0)
+        - (other.thoughts_token_count or 0),
+        total_token_count=(self.total_token_count or 0)
+        - (other.total_token_count or 0),
+    )
+
 
 class StepType(str, enum.Enum):
   """High-level type of a step."""
@@ -1027,7 +1043,7 @@ class ChatResponse:
   @property
   def usage_metadata(self) -> UsageMetadata | None:
     """Accumulated token usage across all model invocations in this turn."""
-    return self._conversation._last_turn_usage  # pylint: disable=protected-access
+    return self._conversation.last_turn_usage
 
   async def cancel(self) -> None:
     """Cancels the active execution turn and halts generation.

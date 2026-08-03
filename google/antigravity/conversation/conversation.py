@@ -33,17 +33,6 @@ from google.antigravity.connections import connection as connection_lib
 _DEFAULT_MAX_HISTORY_SIZE = 10_000
 
 
-def _zero_usage() -> types.UsageMetadata:
-  """Returns a UsageMetadata with all counters set to zero."""
-  return types.UsageMetadata(
-      prompt_token_count=0,
-      cached_content_token_count=0,
-      candidates_token_count=0,
-      thoughts_token_count=0,
-      total_token_count=0,
-  )
-
-
 class Conversation:
   """Stateful session wrapping a single conversation with the agent.
 
@@ -71,14 +60,11 @@ class Conversation:
     self._turn_start_indices: list[int] = []
     self._compaction_indices: list[int] = []
     self._max_history_size = max_history_size
-    self._cumulative_usage = _zero_usage()
-    self._turn_usage: types.UsageMetadata | None = None
+    self._turn_start_usage: types.UsageMetadata | None = None
     for step in history or []:
       self._steps.append(step)
       if step.type == types.StepType.COMPACTION:
         self._compaction_indices.append(len(self._steps) - 1)
-      if step.usage_metadata:
-        self._cumulative_usage += step.usage_metadata
       self._enforce_max_history()
 
   @classmethod
@@ -130,7 +116,7 @@ class Conversation:
         # safe since the active iterator is already preserving steps.
         await self._connection.wait_for_idle()
     self._turn_start_indices.append(len(self._steps))
-    self._turn_usage = None
+    self._turn_start_usage = self._connection.cumulative_usage.model_copy()
     await self._connection.send(prompt, **kwargs)
 
   async def receive_steps(self) -> AsyncIterator[types.Step]:
@@ -149,8 +135,6 @@ class Conversation:
       self._steps.append(step)
       if step.type == types.StepType.COMPACTION:
         self._compaction_indices.append(len(self._steps) - 1)
-      if step.usage_metadata:
-        self._accumulate_usage(step.usage_metadata)
       self._enforce_max_history()
       yield step
 
@@ -267,8 +251,7 @@ class Conversation:
     self._steps.clear()
     self._turn_start_indices.clear()
     self._compaction_indices.clear()
-    self._cumulative_usage = _zero_usage()
-    self._turn_usage = None
+    self._turn_start_usage = None
 
   def _enforce_max_history(self) -> None:
     """Trims history to max_history_size if a limit is set."""
@@ -310,25 +293,34 @@ class Conversation:
 
   @property
   def total_usage(self) -> types.UsageMetadata:
-    """Returns cumulative token usage across all turns in this session.
+    """Returns cumulative token usage across all turns in this session."""
+    return self._connection.cumulative_usage.model_copy()
 
-    This aggregates usage_metadata from every step that reported it.
-    Individual field values are None if no step ever reported that field.
+  @property
+  def trajectory_usages(self) -> dict[str, types.UsageMetadata]:
+    """Returns a dictionary mapping trajectory ID to cumulative token usage.
+
+    The main agent's trajectory ID matches conversation_id (or 'main').
+    Subagents each have a unique trajectory ID.
     """
-    return self._cumulative_usage.model_copy()
+    return {
+        k: v.model_copy() for k, v in self._connection.trajectory_usages.items()
+    }
+
+  @property
+  def last_turn_usage(self) -> types.UsageMetadata | None:
+    """Returns token usage from the most recent turn, or None."""
+    if self._turn_start_usage is None:
+      return None
+    diff = self._connection.cumulative_usage - self._turn_start_usage
+    if diff.total_token_count == 0:
+      return None
+    return diff
 
   @property
   def _last_turn_usage(self) -> types.UsageMetadata | None:
-    """Returns token usage accumulated during the most recent turn, or None."""
-    return self._turn_usage.model_copy() if self._turn_usage else None
-
-  def _accumulate_usage(self, usage: types.UsageMetadata) -> None:
-    """Adds per-step usage counts to the session-level cumulative totals."""
-    self._cumulative_usage += usage
-
-    if self._turn_usage is None:
-      self._turn_usage = _zero_usage()
-    self._turn_usage += usage
+    """Internal alias for last_turn_usage."""
+    return self.last_turn_usage
 
   # ---------------------------------------------------------------------------
   # Lifecycle

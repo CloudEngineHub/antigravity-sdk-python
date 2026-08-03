@@ -168,7 +168,7 @@ def _make_step_id(trajectory_id: str, step_index: int) -> str:
   return f"{trajectory_id}:{step_index}" if trajectory_id else str(step_index)
 
 
-def _parse_usage_metadata(
+def parse_usage_metadata(
     usage_metadata: localharness_pb2.UsageMetadata,
 ) -> types.UsageMetadata:
   """Extracts UsageMetadata from proto message."""
@@ -361,6 +361,8 @@ class LocalHarnessEventProcessor:
       hook_runner: h_runner.HookRunner | None = None,
       tool_runner: t_runner.ToolRunner | None = None,
       dynamic_policy_map: dict[str, policy_lib.Policy] | None = None,
+      initial_usage: types.UsageMetadata | None = None,
+      initial_trajectory_usages: dict[str, types.UsageMetadata] | None = None,
   ):
     self._send_input_event = send_input_event_fn
     self._hook_runner = hook_runner
@@ -380,6 +382,16 @@ class LocalHarnessEventProcessor:
         if hook_runner
         else None
     )
+    self._cumulative_usage: types.UsageMetadata = (
+        initial_usage.model_copy()
+        if initial_usage is not None
+        else types.UsageMetadata()
+    )
+    self._trajectory_usages: dict[str, types.UsageMetadata] = (
+        initial_trajectory_usages.copy()
+        if initial_trajectory_usages is not None
+        else {}
+    )
 
   def reset_for_turn(self) -> None:
     self.is_idle.clear()
@@ -389,6 +401,16 @@ class LocalHarnessEventProcessor:
         self.step_queue.get_nowait()
       except asyncio.QueueEmpty:
         break
+
+  @property
+  def cumulative_usage(self) -> types.UsageMetadata:
+    """Returns total cumulative token usage from the backend."""
+    return self._cumulative_usage
+
+  @property
+  def trajectory_usages(self) -> dict[str, types.UsageMetadata]:
+    """Returns per-trajectory cumulative token usage from the backend."""
+    return self._trajectory_usages.copy()
 
   async def cancel_background_tasks(self) -> None:
     for task in self._background_tasks:
@@ -453,14 +475,7 @@ class LocalHarnessEventProcessor:
           event.step_update, preserving_proto_field_name=True
       )
       parsed_step = LocalConnectionStep.from_dict(step_dict)
-      if event.HasField("usage_metadata"):
-        step_obj = parsed_step.model_copy(
-            update={
-                "usage_metadata": _parse_usage_metadata(event.usage_metadata)
-            }
-        )
-      else:
-        step_obj = parsed_step
+      step_obj = parsed_step
 
       step_obj_for_queue = step_obj
       if self._tool_runner and step_obj.tool_calls:
@@ -534,6 +549,17 @@ class LocalHarnessEventProcessor:
             self._run_in_background(
                 self.handle_tool_confirmation_request(step_update)
             )
+      return
+
+    if event.HasField("usage_update"):
+      usage_update = event.usage_update
+      if usage_update.HasField("total"):
+        self._cumulative_usage = parse_usage_metadata(usage_update.total)
+      for entry in usage_update.agents:
+        if entry.trajectory_id and entry.HasField("usage"):
+          self._trajectory_usages[entry.trajectory_id] = parse_usage_metadata(
+              entry.usage
+          )
       return
 
     if event.HasField("trajectory_state_update"):

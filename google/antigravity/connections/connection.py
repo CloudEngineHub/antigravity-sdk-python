@@ -228,6 +228,24 @@ class Connection(abc.ABC):
     """Returns the debug configuration for this connection, or None if disabled."""
     return None
 
+  @property
+  def cumulative_usage(self) -> types.UsageMetadata:
+    """Returns total cumulative token usage from the backend.
+
+    Subclasses override to provide live usage data. Default returns
+    an empty UsageMetadata instance (all fields None, indicating no tracking).
+    """
+    return types.UsageMetadata()
+
+  @property
+  def trajectory_usages(self) -> dict[str, types.UsageMetadata]:
+    """Returns per-trajectory cumulative token usage from the backend.
+
+    Subclasses override to provide live usage data. Default returns
+    an empty dictionary (no tracking).
+    """
+    return {}
+
   @abc.abstractmethod
   async def send(self, prompt: types.Content | None, **kwargs: Any) -> None:
     """Sends a prompt to the agent.

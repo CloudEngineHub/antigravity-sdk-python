@@ -242,6 +242,8 @@ class LocalConnection(connection.Connection):
       env: dict[str, str] | None = None,
       debug_config: connection.DebugConfig | None = None,
       dynamic_policy_map: dict[str, "policy.Policy"] | None = None,
+      initial_usage: types.UsageMetadata | None = None,
+      initial_trajectory_usages: dict[str, types.UsageMetadata] | None = None,
   ):
     self._hook_runner = hook_runner
     self._process = process
@@ -262,6 +264,8 @@ class LocalConnection(connection.Connection):
         hook_runner=hook_runner,
         tool_runner=tool_runner,
         dynamic_policy_map=dynamic_policy_map,
+        initial_usage=initial_usage,
+        initial_trajectory_usages=initial_trajectory_usages,
     )
 
     self._reader_task = asyncio.create_task(self._ws_reader_loop())
@@ -292,6 +296,16 @@ class LocalConnection(connection.Connection):
   def conversation_id(self) -> str:
     """Returns the conversation identifier, if one exists."""
     return self._processor.main_trajectory_id or ""
+
+  @property
+  def cumulative_usage(self) -> types.UsageMetadata:
+    """Returns total cumulative token usage from the backend."""
+    return self._processor.cumulative_usage
+
+  @property
+  def trajectory_usages(self) -> dict[str, types.UsageMetadata]:
+    """Returns per-trajectory cumulative token usage from the backend."""
+    return self._processor.trajectory_usages
 
   async def send(self, prompt: types.Content | None, **kwargs: Any) -> None:
     """Sends a prompt to the agent.
@@ -1172,6 +1186,8 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       await ws.send(json_format.MessageToJson(init_event))
       raw_init_resp = await ws.recv()
       initial_history: list[types.Step] = []
+      initial_usage = None
+      initial_trajectory_usages = {}
       if isinstance(raw_init_resp, (str, bytes)):
         init_resp_event = localharness_pb2.OutputEvent()
         json_format.Parse(raw_init_resp, init_resp_event)
@@ -1184,6 +1200,15 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
             )
             for step_update_proto in init_resp.history
         ]
+        if init_resp.HasField("cumulative_usage"):
+          initial_usage = event_processor.parse_usage_metadata(
+              init_resp.cumulative_usage
+          )
+        for entry in init_resp.trajectory_usage:
+          if entry.trajectory_id and entry.HasField("usage"):
+            initial_trajectory_usages[entry.trajectory_id] = (
+                event_processor.parse_usage_metadata(entry.usage)
+            )
     except Exception as e:
       process.kill()
       stderr_output = process.stderr.read().decode("utf-8")
@@ -1200,6 +1225,8 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
         env=self._env,
         debug_config=self._debug_config,
         dynamic_policy_map=self._dynamic_policy_map or None,
+        initial_usage=initial_usage,
+        initial_trajectory_usages=initial_trajectory_usages,
     )
     self._connection._start_stderr_reader(process.stderr)
 

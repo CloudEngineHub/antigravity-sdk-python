@@ -2822,39 +2822,42 @@ class LocalConnectionSubagentHookTest(unittest.IsolatedAsyncioTestCase):
     step = await asyncio.wait_for(harness.conn._step_queue.get(), timeout=2.0)
     self.assertEqual(step.type, types.StepType.TOOL_CALL)
 
-  async def test_ws_reader_parses_usage_metadata(self):
-    """Verifies that _ws_reader_loop parses and attaches usage_metadata to steps."""
+  async def test_ws_reader_parses_usage_update(self):
+    """Verifies that _ws_reader_loop parses usage_update events."""
     harness = test_utils.TestLocalHarness(
         test_case=self,
         process=self.mock_process,
     )
 
     event = localharness_pb2.OutputEvent(
+        usage_update=localharness_pb2.UsageUpdate(
+            total=localharness_pb2.UsageMetadata(
+                prompt_token_count=150,
+                cached_content_token_count=50,
+                candidates_token_count=75,
+                thoughts_token_count=25,
+                total_token_count=250,
+            ),
+        ),
+    )
+    await harness.send_event(event)
+
+    # Send a step event so we can synchronize on the queue
+    step_event = localharness_pb2.OutputEvent(
         step_update=localharness_pb2.StepUpdate(
             cascade_id="main",
             trajectory_id="main",
             step_index=1,
-            text="response with usage",
+            text="response after usage",
             state=localharness_pb2.StepUpdate.STATE_ACTIVE,
             source=localharness_pb2.StepUpdate.SOURCE_MODEL,
         ),
-        usage_metadata=localharness_pb2.UsageMetadata(
-            prompt_token_count=150,
-            cached_content_token_count=50,
-            candidates_token_count=75,
-            thoughts_token_count=25,
-            total_token_count=250,
-        ),
     )
-
-    await harness.send_event(event)
-
-    step_obj = await asyncio.wait_for(
-        harness.conn._step_queue.get(), timeout=1.0
-    )
+    await harness.send_event(step_event)
+    await asyncio.wait_for(harness.conn._step_queue.get(), timeout=1.0)
 
     self.assertEqual(
-        step_obj.usage_metadata,
+        harness.conn.cumulative_usage,
         types.UsageMetadata(
             prompt_token_count=150,
             cached_content_token_count=50,

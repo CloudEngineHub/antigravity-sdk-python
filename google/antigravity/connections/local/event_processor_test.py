@@ -66,7 +66,7 @@ class EventProcessorHelperTest(absltest.TestCase):
         thoughts_token_count=25,
         total_token_count=250,
     )
-    meta = event_processor._parse_usage_metadata(pb)
+    meta = event_processor.parse_usage_metadata(pb)
     self.assertEqual(meta.prompt_token_count, 100)
     self.assertEqual(meta.cached_content_token_count, 50)
     self.assertEqual(meta.candidates_token_count, 75)
@@ -75,7 +75,7 @@ class EventProcessorHelperTest(absltest.TestCase):
 
   def test_parse_usage_metadata_empty(self):
     pb = localharness_pb2.UsageMetadata()
-    meta = event_processor._parse_usage_metadata(pb)
+    meta = event_processor.parse_usage_metadata(pb)
     self.assertIsNone(meta.prompt_token_count)
     self.assertIsNone(meta.cached_content_token_count)
     self.assertIsNone(meta.candidates_token_count)
@@ -314,6 +314,74 @@ class LocalConnectionStepFromDictTest(absltest.TestCase):
 
 class LocalHarnessEventProcessorTest(unittest.IsolatedAsyncioTestCase):
   """Tests for LocalHarnessEventProcessor."""
+
+  async def test_process_event_updates_cumulative_usage(self):
+    processor = event_processor.LocalHarnessEventProcessor(
+        send_input_event_fn=mock.AsyncMock()
+    )
+    processor.main_trajectory_id = "main_traj"
+
+    event = localharness_pb2.OutputEvent(
+        usage_update=localharness_pb2.UsageUpdate(
+            agents=[
+                localharness_pb2.TrajectoryUsageEntry(
+                    trajectory_id="main_traj",
+                    usage=localharness_pb2.UsageMetadata(
+                        prompt_token_count=120, total_token_count=150
+                    ),
+                )
+            ],
+            total=localharness_pb2.UsageMetadata(
+                prompt_token_count=120, total_token_count=150
+            ),
+        )
+    )
+    await processor.process_event(event)
+
+    self.assertEqual(processor.cumulative_usage.prompt_token_count, 120)
+    self.assertEqual(processor.cumulative_usage.total_token_count, 150)
+    self.assertEqual(
+        processor.trajectory_usages["main_traj"].prompt_token_count, 120
+    )
+    self.assertEqual(
+        processor.trajectory_usages["main_traj"].total_token_count, 150
+    )
+
+    # Verify usage update with subagent also updates cumulative usage.
+    subagent_event = localharness_pb2.OutputEvent(
+        usage_update=localharness_pb2.UsageUpdate(
+            agents=[
+                localharness_pb2.TrajectoryUsageEntry(
+                    trajectory_id="main_traj",
+                    usage=localharness_pb2.UsageMetadata(
+                        prompt_token_count=120, total_token_count=150
+                    ),
+                ),
+                localharness_pb2.TrajectoryUsageEntry(
+                    trajectory_id="subagent_1",
+                    usage=localharness_pb2.UsageMetadata(
+                        prompt_token_count=180, total_token_count=250
+                    ),
+                ),
+            ],
+            total=localharness_pb2.UsageMetadata(
+                prompt_token_count=300, total_token_count=400
+            ),
+        )
+    )
+    await processor.process_event(subagent_event)
+
+    self.assertEqual(processor.cumulative_usage.prompt_token_count, 300)
+    self.assertEqual(processor.cumulative_usage.total_token_count, 400)
+    self.assertEqual(
+        processor.trajectory_usages["main_traj"].prompt_token_count, 120
+    )
+    self.assertEqual(
+        processor.trajectory_usages["subagent_1"].prompt_token_count, 180
+    )
+    self.assertEqual(
+        processor.trajectory_usages["subagent_1"].total_token_count, 250
+    )
 
   async def test_main_agent_running_clears_idle_state(self):
     """Verifies that when the main agent is RUNNING, the connection is not idle."""

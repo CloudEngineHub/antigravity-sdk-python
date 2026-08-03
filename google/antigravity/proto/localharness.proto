@@ -269,14 +269,16 @@ message OutputEvent {
     bool session_end_response = 15;
     .antigravity.localharness.PolicyDecisionRequest policy_decision_request =
         16;
+    .antigravity.localharness.UsageUpdate usage_update = 17;
   }
   int64 seq_num = 1;
   int64 timestamp_micros = 2;
-  .antigravity.localharness.UsageMetadata usage_metadata = 20;
 }
 message InitializeConversationResponse {
   string cascade_id = 1;
   repeated .antigravity.localharness.StepUpdate history = 2;
+  .antigravity.localharness.UsageMetadata cumulative_usage = 3;
+  repeated .antigravity.localharness.TrajectoryUsageEntry trajectory_usage = 4;
 }
 message StepUpdate {
   enum State {
@@ -474,6 +476,14 @@ message TrajectoryStateUpdate {
   string trajectory_id = 2;
   .antigravity.localharness.TrajectoryStateUpdate.State state = 3;
   string error = 4;
+}
+message TrajectoryUsageEntry {
+  string trajectory_id = 1;
+  .antigravity.localharness.UsageMetadata usage = 2;
+}
+message UsageUpdate {
+  repeated .antigravity.localharness.TrajectoryUsageEntry agents = 1;
+  .antigravity.localharness.UsageMetadata total = 2;
 }
 message ToolCall {
   string id = 1;

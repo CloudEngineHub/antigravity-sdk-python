@@ -796,6 +796,15 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     mock_connection = mock.MagicMock(spec=connection.Connection)
     mock_connection.wait_for_idle = mock.AsyncMock()
     mock_connection.send = mock.AsyncMock()
+    # Provide a mutable UsageMetadata that tests can update to simulate
+    # the backend pushing cumulative_usage via TrajectoryStateUpdate.
+    mock_connection.cumulative_usage = types.UsageMetadata(
+        prompt_token_count=0,
+        cached_content_token_count=0,
+        candidates_token_count=0,
+        thoughts_token_count=0,
+        total_token_count=0,
+    )
     return conversation.Conversation(mock_connection), mock_connection
 
   async def test_total_usage_starts_at_zero(self):
@@ -814,7 +823,7 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     )
 
   async def test_total_usage_accumulates_across_steps(self):
-    """Verifies usage is summed from every step that reports it."""
+    """Verifies total_usage comes from cumulative_usage, per-turn via diff."""
     conv, mock_connection = self._make_conv_with_mock()
 
     async def gen():
@@ -822,16 +831,29 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
       yield self._make_step_with_usage(1, prompt=200, candidates=30, total=230)
 
     mock_connection.receive_steps.return_value = gen()
+    await conv.send("q")
     async for _ in conv.receive_steps():
       pass
 
+    # Simulate backend pushing session cumulative usage after all steps.
+    mock_connection.cumulative_usage = types.UsageMetadata(
+        prompt_token_count=300,
+        cached_content_token_count=0,
+        candidates_token_count=80,
+        thoughts_token_count=0,
+        total_token_count=380,
+    )
     usage = conv.total_usage
     self.assertEqual(usage.prompt_token_count, 300)
     self.assertEqual(usage.candidates_token_count, 80)
     self.assertEqual(usage.total_token_count, 380)
 
+    # Per-turn usage is a diff of cumulative_usage.
+    self.assertEqual(conv._last_turn_usage.prompt_token_count, 300)
+    self.assertEqual(conv._last_turn_usage.candidates_token_count, 80)
+
   async def test_total_usage_ignores_none_fields(self):
-    """Verifies None usage fields don't affect the cumulative total."""
+    """Verifies per-turn usage is computed via cumulative_usage diff."""
     conv, mock_connection = self._make_conv_with_mock()
 
     step_with = self._make_step_with_usage(0, prompt=100, thoughts=10)
@@ -842,15 +864,23 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
       yield step_without
 
     mock_connection.receive_steps.return_value = gen()
+    await conv.send("q")
     async for _ in conv.receive_steps():
       pass
 
-    usage = conv.total_usage
-    self.assertEqual(usage.prompt_token_count, 100)
-    self.assertEqual(usage.thoughts_token_count, 10)
+    # Simulate backend pushing session cumulative usage.
+    mock_connection.cumulative_usage = types.UsageMetadata(
+        prompt_token_count=100, thoughts_token_count=10, total_token_count=110
+    )
+    self.assertEqual(conv._last_turn_usage.prompt_token_count, 100)
+    self.assertEqual(conv._last_turn_usage.thoughts_token_count, 10)
 
   async def test_total_usage_accumulates_across_turns(self):
-    """Verifies cumulative usage spans multiple send/receive cycles."""
+    """Verifies cumulative usage spans multiple send/receive cycles.
+
+    With cascade ownership, the backend pushes cumulative_usage.
+    This test verifies that total_usage reflects the latest pushed value.
+    """
     conv, mock_connection = self._make_conv_with_mock()
 
     async def gen1():
@@ -864,14 +894,26 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     async for _ in conv.receive_steps():
       pass
 
+    # Simulate backend pushing usage after turn 1.
+    mock_connection.cumulative_usage = types.UsageMetadata(
+        prompt_token_count=100, total_token_count=120
+    )
+
     mock_connection.receive_steps.return_value = gen2()
     await conv.send("turn2")
     async for _ in conv.receive_steps():
       pass
 
+    # Simulate backend pushing usage after turn 2 (cumulative).
+    mock_connection.cumulative_usage = types.UsageMetadata(
+        prompt_token_count=250, total_token_count=300
+    )
+
     usage = conv.total_usage
     self.assertEqual(usage.prompt_token_count, 250)
     self.assertEqual(usage.total_token_count, 300)
+    self.assertEqual(conv._last_turn_usage.prompt_token_count, 150)
+    self.assertEqual(conv._last_turn_usage.total_token_count, 180)
 
   async def test_total_usage_returns_copy(self):
     """Verifies total_usage returns a copy, not a reference to internal state."""
@@ -881,7 +923,7 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(conv.total_usage.prompt_token_count, 0)
 
   async def test_clear_history_resets_usage(self):
-    """Verifies clear_history resets cumulative usage to zero."""
+    """Verifies clear_history resets local turn usage snapshot."""
     conv, mock_connection = self._make_conv_with_mock()
 
     async def gen():
@@ -892,15 +934,19 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     async for _ in conv.receive_steps():
       pass
 
+    # Simulate backend pushing usage.
+    mock_connection.cumulative_usage = types.UsageMetadata(
+        prompt_token_count=500, total_token_count=600
+    )
     self.assertEqual(conv.total_usage.prompt_token_count, 500)
 
     conv.clear_history()
 
-    self.assertEqual(conv.total_usage.prompt_token_count, 0)
-    self.assertEqual(conv.total_usage.total_token_count, 0)
+    # Per-turn usage is reset locally.
+    self.assertIsNone(conv._last_turn_usage)
 
   async def test_chat_returns_accumulated_usage_metadata(self):
-    """Verifies chat() accumulates usage across all steps in the turn."""
+    """Verifies chat() returns per-turn usage via cumulative_usage diff."""
     conv, mock_connection = self._make_conv_with_mock()
 
     step1 = self._make_step_with_usage(0, prompt=100, candidates=50, total=150)
@@ -915,6 +961,15 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
       yield step2
 
     mock_connection.receive_steps.return_value = gen()
+    # Simulate backend pushing cumulative usage after send() snapshots.
+    async def send_side_effect(*_args, **_kwargs):
+      mock_connection.cumulative_usage = types.UsageMetadata(
+          prompt_token_count=300,
+          candidates_token_count=80,
+          total_token_count=380,
+      )
+
+    mock_connection.send.side_effect = send_side_effect
     result = await conv.chat("question")
     await result.resolve()
 
@@ -924,7 +979,7 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result.usage_metadata.total_token_count, 380)
 
   async def test_chat_returns_none_usage_when_absent(self):
-    """Verifies chat() returns None usage_metadata when no step has it."""
+    """Verifies chat() returns zero usage when backend hasn't pushed any."""
     conv, mock_connection = self._make_conv_with_mock()
 
     async def gen():
@@ -934,10 +989,16 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     result = await conv.chat("question")
     await result.resolve()
 
+    # No cumulative_usage was pushed, so turn usage is None.
     self.assertIsNone(result.usage_metadata)
 
   async def test_initialization_with_history_usage(self):
-    """Verifies that historical steps populate total_usage but NOT turn_usage."""
+    """Verifies that historical steps do NOT populate total_usage (backend owns it).
+
+    With cascade ownership, total_usage comes from the connection's
+    cumulative_usage, not from per-step accumulation. Historical
+    steps are loaded for display but their usage is not summed locally.
+    """
     hist_step1 = self._make_step_with_usage(0, prompt=100, total=120)
     hist_step2 = self._make_step_with_usage(1, prompt=200, total=240)
 
@@ -945,12 +1006,16 @@ class ConversationUsageMetadataTest(unittest.IsolatedAsyncioTestCase):
     mock_connection._initial_history = [hist_step1, hist_step2]
     mock_connection.wait_for_idle = mock.AsyncMock()
     mock_connection.send = mock.AsyncMock()
+    # Backend seeds cumulative_usage during init handshake.
+    mock_connection.cumulative_usage = types.UsageMetadata(
+        prompt_token_count=300, total_token_count=360
+    )
 
     conv = conversation.Conversation(
         mock_connection, history=[hist_step1, hist_step2]
     )
 
-    # Total cumulative usage must correctly sum the historical steps
+    # Total cumulative usage comes from the backend, not from history steps.
     self.assertEqual(conv.total_usage.prompt_token_count, 300)
     self.assertEqual(conv.total_usage.total_token_count, 360)
 
