@@ -342,6 +342,22 @@ def _upgrade_policies_list(policies: list[Any]) -> list[Any]:
   return upgraded
 
 
+def _format_step_spinner_message(step: types.Step) -> str | None:
+  """Returns the spinner display message for a given trajectory step."""
+  if step.type == types.StepType.TOOL_CALL:
+    if step.tool_calls:
+      if len(step.tool_calls) == 1:
+        return f"Running tool '{step.tool_calls[0].name}'..."
+      tool_names = ", ".join(f"'{tc.name}'" for tc in step.tool_calls)
+      return f"Running tools {tool_names}..."
+    return "Running tool..."
+  elif step.type == types.StepType.COMPACTION:
+    return "Compacting context..."
+  elif step.source == types.StepSource.MODEL and step.thinking_delta:
+    return "Reasoning..."
+  return None
+
+
 async def run_interactive_loop(
     config: connection_module.AgentConfig,
     agent_class: type[agent_module.Agent] = agent_module.Agent,
@@ -390,14 +406,9 @@ async def _run_loop(agent: agent_module.Agent) -> None:
 
       async with Spinner() as spinner:
         async for step in agent.conversation.receive_steps():
-
-          if step.type == types.StepType.TOOL_CALL:
-            tool_name = step.tool_calls[0].name if step.tool_calls else "tool"
-            spinner.update(f"Running tool '{tool_name}'...")
-          elif step.type == types.StepType.COMPACTION:
-            spinner.update("Compacting context...")
-          elif step.source == types.StepSource.MODEL and step.thinking_delta:
-            spinner.update("Reasoning...")
+          msg = _format_step_spinner_message(step)
+          if msg:
+            spinner.update(msg)
 
           if step.is_complete_response:
             break

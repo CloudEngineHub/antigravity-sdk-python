@@ -450,6 +450,59 @@ class RunInteractiveLoopTest(unittest.IsolatedAsyncioTestCase):
     self.assertIs(called_config.hooks[0], existing_hook)
 
 
+class FormatStepSpinnerMessageTest(unittest.TestCase):
+  """Tests for _format_step_spinner_message (mock-free)."""
+
+  def test_single_tool_call(self):
+    step = types.Step(
+        type=types.StepType.TOOL_CALL,
+        tool_calls=[types.ToolCall(name="tool_a", args={})],
+    )
+    self.assertEqual(
+        interactive._format_step_spinner_message(step),
+        "Running tool 'tool_a'...",
+    )
+
+  def test_multiple_tool_calls(self):
+    step = types.Step(
+        type=types.StepType.TOOL_CALL,
+        tool_calls=[
+            types.ToolCall(name="tool_a", args={}),
+            types.ToolCall(name="tool_b", args={}),
+        ],
+    )
+    self.assertEqual(
+        interactive._format_step_spinner_message(step),
+        "Running tools 'tool_a', 'tool_b'...",
+    )
+
+  def test_empty_tool_calls(self):
+    step = types.Step(type=types.StepType.TOOL_CALL, tool_calls=[])
+    self.assertEqual(
+        interactive._format_step_spinner_message(step),
+        "Running tool...",
+    )
+
+  def test_compaction_and_reasoning(self):
+    compaction_step = types.Step(type=types.StepType.COMPACTION)
+    self.assertEqual(
+        interactive._format_step_spinner_message(compaction_step),
+        "Compacting context...",
+    )
+    reasoning_step = types.Step(
+        source=types.StepSource.MODEL,
+        thinking_delta="thinking...",
+    )
+    self.assertEqual(
+        interactive._format_step_spinner_message(reasoning_step),
+        "Reasoning...",
+    )
+
+  def test_other_step_returns_none(self):
+    step = types.Step(content="Hello")
+    self.assertIsNone(interactive._format_step_spinner_message(step))
+
+
 class SpinnerInteractionTest(unittest.IsolatedAsyncioTestCase):
   """Tests for Spinner pausing and resuming during interactions."""
 
