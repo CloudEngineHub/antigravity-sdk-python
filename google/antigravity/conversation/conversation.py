@@ -65,7 +65,7 @@ class Conversation:
       self._steps.append(step)
       if step.type == types.StepType.COMPACTION:
         self._compaction_indices.append(len(self._steps) - 1)
-      self._enforce_max_history()
+    self._enforce_max_history()
 
   @classmethod
   @contextlib.asynccontextmanager
