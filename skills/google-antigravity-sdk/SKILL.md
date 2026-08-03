@@ -30,6 +30,9 @@ ready:
         Instruct the user to run `gcloud auth application-default login` and
         configure the agent with `vertex=True` along with `project` and
         `location` in `LocalAgentConfig`.
+    -   **Note**: For local models (`LiteRTAgentConfig` or
+        `LocalOpenAIAgentConfig`), no API key or cloud credentials are needed.
+        See `references/local_models.md` for setup details.
 
 ## Routing Table
 
@@ -58,6 +61,10 @@ relevant information.
     tokens), or build custom audit logs for advanced monitoring, read
     `references/observability.md`.
 -   If the user needs to see a list of built-in tools and understand their default state, read `references/built_in_tools.md`.
+-   If the user needs to run agents locally using on-device models (e.g., Gemma
+    via LiteRT, or via OpenAI-compatible APIs), understand hardware
+    requirements, or set up a local model environment, read
+    `references/local_models.md`.
 
 ### Examples
 
@@ -104,3 +111,7 @@ relevant information.
     `examples/getting_started/web_tools.md`. (Note: when fetching massive web
     pages or articles, pair `read_url_content` with `view_file` to inspect
     cached disk files).
+-   If the user needs to set up and run a local model agent (LiteRT with Gemma,
+    or an OpenAI-compatible server like Ollama), including model download,
+    hardware requirements, and context window configuration, read
+    `examples/getting_started/local_models.md`.

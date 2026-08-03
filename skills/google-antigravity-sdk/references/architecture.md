@@ -30,6 +30,16 @@ backend. - **Responsibilities**: Sends prompts and receives execution steps. It
 decouples higher-level APIs from specific transport details or backend locations
 (local, cloud, etc.).
 
+The SDK ships multiple `ConnectionStrategy` implementations for different
+backends:
+
+-   `LocalConnectionStrategy`: Connects to the remote Gemini API.
+-   `LiteRTConnectionStrategy`: Runs models locally on-device using LiteRT-LM.
+-   `LocalOpenAIConnectionStrategy`: Connects to any OpenAI-compatible local
+    server (Ollama, LM Studio, etc.).
+
+For details on local model configuration, see `references/local_models.md`.
+
 ## Relationship and Flow
 
 The core concepts work together in a hierarchical fashion to manage an

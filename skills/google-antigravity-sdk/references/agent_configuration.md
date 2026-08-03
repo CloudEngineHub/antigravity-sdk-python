@@ -139,6 +139,18 @@ config = LocalAgentConfig(
 
 For more details, see [mcp_integration.md](mcp_integration.md).
 
+### Local Model Configuration
+
+The SDK supports running agents entirely on-device without an API key. Two
+additional config classes are available:
+
+-   `LiteRTAgentConfig`: For running Gemma models locally via LiteRT-LM.
+-   `LocalOpenAIAgentConfig`: For connecting to any OpenAI-compatible local
+    server (e.g., Ollama, LM Studio).
+
+For full setup instructions, hardware requirements, and configuration details,
+see [local_models.md](local_models.md).
+
 ### Custom Environment Variables (Subprocess & Shell Isolation)
 
 You can pass a custom dictionary of environment variables using `env` in `LocalAgentConfig`. These variables override any variables with the same name in the parent process's environment when launching `localharness` and are inherited by shell tool execution (`run_command`):
