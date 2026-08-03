@@ -2776,6 +2776,7 @@ class LocalConnectionCompactionHookTest(unittest.IsolatedAsyncioTestCase):
 
     self.assertEqual(len(captured), 1)
     self.assertIsInstance(captured[0], local_connection.LocalConnectionStep)
+    self.assertEqual(captured[0].type, types.StepType.COMPACTION)
     self.assertEqual(captured[0].content, "Context compaction")
 
 
