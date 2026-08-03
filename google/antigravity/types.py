@@ -25,7 +25,7 @@ from collections.abc import Sequence
 import enum
 import mimetypes
 import pathlib
-from typing import Annotated, Any, AsyncIterator, Callable, Literal, TypeVar, cast
+from typing import Annotated, Any, AsyncIterator, Callable, ClassVar, Literal, TypeVar, cast
 
 import pydantic
 
@@ -1168,9 +1168,21 @@ def _read_file_and_guess_mime(
 class _BaseMedia(pydantic.BaseModel):
   """Base class for all rich multimedia content attachment primitives."""
 
+  _SUPPORTED_MIMES: ClassVar[frozenset[str]] = frozenset()
+
   data: bytes
   mime_type: str
   description: str | None = None
+
+  @pydantic.field_validator("mime_type")
+  @classmethod
+  def _validate_mime_type(cls, v: str) -> str:
+    """Validates that the MIME type is supported for this media type."""
+    if cls is _BaseMedia:
+      return v
+    if v not in cls._SUPPORTED_MIMES:
+      raise ValueError(f"Unsupported {cls.__name__} MIME type: '{v}'")
+    return v
 
   @classmethod
   def from_file(
@@ -1200,49 +1212,25 @@ class _BaseMedia(pydantic.BaseModel):
 class Image(_BaseMedia):
   """Image content attachment primitive."""
 
-  @pydantic.field_validator("mime_type")
-  @classmethod
-  def _validate_mime_type(cls, v: str) -> str:
-    """Validates that the MIME type is supported for Image content."""
-    if v not in SUPPORTED_IMAGE_MIMES:
-      raise ValueError(f"Unsupported Image MIME type: '{v}'")
-    return v
+  _SUPPORTED_MIMES: ClassVar[frozenset[str]] = SUPPORTED_IMAGE_MIMES
 
 
 class Document(_BaseMedia):
   """Document content attachment primitive."""
 
-  @pydantic.field_validator("mime_type")
-  @classmethod
-  def _validate_mime_type(cls, v: str) -> str:
-    """Validates that the MIME type is supported for Document content."""
-    if v not in SUPPORTED_DOCUMENT_MIMES:
-      raise ValueError(f"Unsupported Document MIME type: '{v}'")
-    return v
+  _SUPPORTED_MIMES: ClassVar[frozenset[str]] = SUPPORTED_DOCUMENT_MIMES
 
 
 class Audio(_BaseMedia):
   """Audio content attachment primitive."""
 
-  @pydantic.field_validator("mime_type")
-  @classmethod
-  def _validate_mime_type(cls, v: str) -> str:
-    """Validates that the MIME type is supported for Audio content."""
-    if v not in SUPPORTED_AUDIO_MIMES:
-      raise ValueError(f"Unsupported Audio MIME type: '{v}'")
-    return v
+  _SUPPORTED_MIMES: ClassVar[frozenset[str]] = SUPPORTED_AUDIO_MIMES
 
 
 class Video(_BaseMedia):
   """Video content attachment primitive."""
 
-  @pydantic.field_validator("mime_type")
-  @classmethod
-  def _validate_mime_type(cls, v: str) -> str:
-    """Validates that the MIME type is supported for Video content."""
-    if v not in SUPPORTED_VIDEO_MIMES:
-      raise ValueError(f"Unsupported Video MIME type: '{v}'")
-    return v
+  _SUPPORTED_MIMES: ClassVar[frozenset[str]] = SUPPORTED_VIDEO_MIMES
 
 
 class BuiltinSlashCommandName(str, enum.Enum):

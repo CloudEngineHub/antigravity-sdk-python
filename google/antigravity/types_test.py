@@ -780,6 +780,52 @@ class ImageTest(unittest.TestCase):
         types.Image.from_file(tmp_file)
 
 
+class DocumentTest(parameterized.TestCase):
+  """Tests for the Document content attachment primitive and its validators."""
+
+  def test_basic_construction(self):
+    """Verifies that a Document can be successfully constructed with valid arguments."""
+    doc = types.Document(
+        data=b"pdf_data", mime_type="application/pdf", description="report"
+    )
+    self.assertEqual(doc.data, b"pdf_data")
+    self.assertEqual(doc.mime_type, "application/pdf")
+    self.assertEqual(doc.description, "report")
+
+  @parameterized.parameters(
+      "application/pdf",
+      "application/json",
+      "text/css",
+      "text/csv",
+      "text/html",
+      "text/javascript",
+      "text/plain",
+      "text/rtf",
+      "text/xml",
+  )
+  def test_supported_mime_types(self, mime_type: str):
+    """Verifies that all supported Document MIME types pass validation."""
+    doc = types.Document(data=b"sample_data", mime_type=mime_type)
+    self.assertEqual(doc.mime_type, mime_type)
+
+  def test_unsupported_mime_type_raises(self):
+    """Verifies that an unsupported Document MIME type triggers ValidationError."""
+    with self.assertRaises(pydantic.ValidationError):
+      types.Document(data=b"image_bytes", mime_type="image/png")
+
+  def test_from_file_success(self):
+    """Verifies that from_file loader loads bytes and guesses MIME correctly."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+      tmp_file = pathlib.Path(tmpdir) / "report.pdf"
+      fake_bytes = b"pdf_file_content"
+      tmp_file.write_bytes(fake_bytes)
+
+      doc = types.Document.from_file(tmp_file, description="monthly report")
+      self.assertEqual(doc.data, fake_bytes)
+      self.assertEqual(doc.mime_type, "application/pdf")
+      self.assertEqual(doc.description, "monthly report")
+
+
 class AudioTest(parameterized.TestCase):
   """Validates the Audio content attachment primitive and its validators."""
 
