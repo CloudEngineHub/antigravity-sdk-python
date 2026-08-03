@@ -114,6 +114,7 @@ message FilesystemWorkspace {
 }
 message GeminiModelOptions {
   string thinking_level = 1;
+  string service_tier = 2;
 }
 message GeminiAPIEndpoint {
   string base_url = 1;
@@ -535,6 +536,7 @@ message UsageMetadata {
   uint64 candidates_token_count = 2;
   uint64 thoughts_token_count = 4;
   uint64 total_token_count = 3;
+  string service_tier = 6;
 }
 message McpServerConfig {
   enum AuthProviderType {
