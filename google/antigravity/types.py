@@ -835,13 +835,19 @@ class ToolExecutionError(RuntimeError):
 
   tool_name: str
   server_name: str | None
+  call_id: str | None
 
   def __init__(
-      self, message: str, tool_name: str, server_name: str | None = None
+      self,
+      message: str,
+      tool_name: str,
+      server_name: str | None = None,
+      call_id: str | None = None,
   ):
     super().__init__(message)
     self.tool_name = tool_name
     self.server_name = server_name
+    self.call_id = call_id
 
 
 class AntigravityValidationError(Exception):

@@ -179,6 +179,7 @@ class HookRouter:
     tool_name = ""
     args: dict[str, Any] = {}
     server_name: str | None = None
+    call_id: str | None = None
     if req.HasField("pre_tool_args"):
       pta = req.pre_tool_args
       tool_name = PROTO_FIELD_TO_SDK_NAME.get(pta.tool_name, pta.tool_name)
@@ -188,6 +189,8 @@ class HookRouter:
       # enabling SDK policies to match by server/tool target.
       if pta.server_name:
         server_name = pta.server_name
+      if pta.call_id:
+        call_id = pta.call_id
       _normalize_path_args(args)
 
     # Derive canonical_path from the first normalized path field so that
@@ -202,6 +205,7 @@ class HookRouter:
     tc = types.ToolCall(
         name=tool_name,
         args=args,
+        id=call_id,
         server_name=server_name,
         canonical_path=canonical_path,
     )
@@ -227,12 +231,14 @@ class HookRouter:
   ) -> None:
     tool_name = ""
     server_name: str | None = None
+    call_id: str | None = None
     result_val: Any = None
     error_str = ""
     if req.HasField("post_tool_args"):
       pta = req.post_tool_args
       tool_name = PROTO_FIELD_TO_SDK_NAME.get(pta.tool_name, pta.tool_name)
       server_name = pta.server_name or None
+      call_id = pta.call_id or None
       result_val = pta.result if not pta.error else None
       error_str = pta.error
       if self._extract_result and not pta.error and pta.result:
@@ -241,6 +247,7 @@ class HookRouter:
           result_val = extracted
     tool_result = types.ToolResult(
         name=tool_name,
+        id=call_id,
         server_name=server_name,
         result=result_val,
         error=error_str or None,
@@ -261,13 +268,17 @@ class HookRouter:
     error_message = "Tool failed"
     tool_name = ""
     server_name = None
+    call_id = None
     if req.HasField("on_tool_error_args"):
       ote = req.on_tool_error_args
       error_message = ote.error_message or error_message
       tool_name = PROTO_FIELD_TO_SDK_NAME.get(ote.tool_name, ote.tool_name)
       server_name = ote.server_name or None
+      call_id = ote.call_id or None
 
-    error = types.ToolExecutionError(error_message, tool_name, server_name)
+    error = types.ToolExecutionError(
+        error_message, tool_name, server_name, call_id=call_id
+    )
     turn_ctx = self._current_turn_context or hooks.TurnContext(
         self._hook_runner.session_context
     )

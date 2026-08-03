@@ -76,18 +76,27 @@ async def post_turn(data: str) -> None:
 
 @hooks.pre_tool_call_decide
 async def pre_tool(data: types.ToolCall) -> types.HookResult:
-  print(f"\n  [Hook] Pre-tool-call: Approving tool -> {data.name}")
+  print(
+      "\n  [Hook] Pre-tool-call: Approving tool ->"
+      f" {data.name} (call_id={data.id!r})"
+  )
   return types.HookResult(allow=True)
 
 
 @hooks.post_tool_call
 async def post_tool(data: Any) -> None:
-  print(f"\n  [Hook] Post-tool-call: Result -> {data!r}")
+  print(
+      f"\n  [Hook] Post-tool-call: Result -> {data!r}"
+      f" (call_id={getattr(data, 'id', None)!r})"
+  )
 
 
 @hooks.on_tool_error
 async def on_error(data: Exception) -> None:
-  print(f"\n  [Hook] Tool error: {data!r}")
+  print(
+      f"\n  [Hook] Tool error: {data!r}"
+      f" (call_id={getattr(data, 'call_id', None)!r})"
+  )
   return None  # Let the error propagate
 
 

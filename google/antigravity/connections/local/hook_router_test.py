@@ -303,6 +303,7 @@ class HookRouterTest(absltest.TestCase):
               tool_name="pirate_multiply",
               server_name="pirate_math",
               result="35",
+              call_id="call_post",
           ),
       )
 
@@ -314,6 +315,7 @@ class HookRouterTest(absltest.TestCase):
       self.assertEqual(tool_result.name, "pirate_multiply")
       self.assertEqual(tool_result.server_name, "pirate_math")
       self.assertEqual(tool_result.result, "35")
+      self.assertEqual(tool_result.id, "call_post")
       self.assertIsNone(tool_result.error)
 
     asyncio.run(_test())
@@ -640,6 +642,7 @@ class HookRouterOnToolErrorTest(absltest.TestCase):
               tool_name="mcp_tool",
               error_message="mcp error",
               server_name="mcp_server",
+              call_id="call_err",
           ),
       )
 
@@ -650,6 +653,7 @@ class HookRouterOnToolErrorTest(absltest.TestCase):
       self.assertIsInstance(received_errors[0], types.ToolExecutionError)
       self.assertEqual(received_errors[0].tool_name, "mcp_tool")
       self.assertEqual(received_errors[0].server_name, "mcp_server")
+      self.assertEqual(received_errors[0].call_id, "call_err")
       self.assertEqual(str(received_errors[0]), "mcp error")
       self.assertLen(sent_events, 1)
       resp = sent_events[0].call_hook_response
@@ -757,6 +761,7 @@ class HookRouterPreToolTest(absltest.TestCase):
           pre_tool_args=localharness_pb2.PreToolArgs(
               tool_name="run_command",
               arguments_json='{"cmd": "ls"}',
+              call_id="call_pre",
           ),
       )
 
@@ -773,6 +778,7 @@ class HookRouterPreToolTest(absltest.TestCase):
       self.assertLen(captured_tool_calls, 1)
       self.assertEqual(captured_tool_calls[0].name, "run_command")
       self.assertEqual(captured_tool_calls[0].args, {"cmd": "ls"})
+      self.assertEqual(captured_tool_calls[0].id, "call_pre")
 
     asyncio.run(_test())
 

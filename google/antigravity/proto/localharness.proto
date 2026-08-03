@@ -596,17 +596,20 @@ message PreToolArgs {
   string tool_name = 1;
   string arguments_json = 2;
   string server_name = 3;
+  string call_id = 4;
 }
 message PostToolArgs {
   string tool_name = 1;
   string result = 2;
   string error = 3;
   string server_name = 5;
+  string call_id = 6;
 }
 message OnToolErrorArgs {
   string tool_name = 1;
   string error_message = 2;
   string server_name = 4;
+  string call_id = 5;
 }
 message PreTurnArgs {
   .antigravity.localharness.UserInput user_input = 1;

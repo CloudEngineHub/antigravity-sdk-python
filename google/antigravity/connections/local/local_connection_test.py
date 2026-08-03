@@ -579,6 +579,85 @@ class LocalConnectionTest(unittest.IsolatedAsyncioTestCase):
     await asyncio.sleep(0.05)
     self.assertEqual(captured, [""])
 
+  async def test_tool_hooks_receive_call_id(self):
+    hr = hook_runner.HookRunner()
+    pre_ids = []
+    post_ids = []
+    error_ids = []
+
+    @hooks_base.pre_tool_call_decide
+    async def capture_pre(data: types.ToolCall) -> hooks_base.HookResult:
+      pre_ids.append(data.id)
+      return hooks_base.HookResult(allow=True)
+
+    @hooks_base.post_tool_call
+    async def capture_post(data: types.ToolResult) -> None:
+      post_ids.append(data.id)
+
+    @hooks_base.on_tool_error
+    async def capture_error(data: Exception) -> None:
+      error_ids.append(getattr(data, "call_id", None))
+      return None
+
+    hr.register_hook(capture_pre)
+    hr.register_hook(capture_post)
+    hr.register_hook(capture_error)
+
+    harness = test_utils.TestLocalHarness(
+        test_case=self,
+        process=self.mock_process,
+        tool_runner=self.tool_runner,
+        hook_runner=hr,
+    )
+
+    # Simulate harness dispatching PreTool, PostTool, and OnToolError hooks
+    await harness.send_event(
+        localharness_pb2.OutputEvent(
+            call_hook_request=localharness_pb2.CallHookRequest(
+                request_id="req_pre",
+                name="PreTool",
+                type=localharness_pb2.LIFECYCLE_HOOK_PRE_TOOL,
+                pre_tool_args=localharness_pb2.PreToolArgs(
+                    tool_name="greet",
+                    arguments_json='{"name": "Alice"}',
+                    call_id="call_pre_123",
+                ),
+            )
+        )
+    )
+    await harness.send_event(
+        localharness_pb2.OutputEvent(
+            call_hook_request=localharness_pb2.CallHookRequest(
+                request_id="req_post",
+                name="PostTool",
+                type=localharness_pb2.LIFECYCLE_HOOK_POST_TOOL,
+                post_tool_args=localharness_pb2.PostToolArgs(
+                    tool_name="greet",
+                    result="Hello Alice",
+                    call_id="call_post_456",
+                ),
+            )
+        )
+    )
+    await harness.send_event(
+        localharness_pb2.OutputEvent(
+            call_hook_request=localharness_pb2.CallHookRequest(
+                request_id="req_err",
+                name="OnToolError",
+                type=localharness_pb2.LIFECYCLE_HOOK_ON_TOOL_ERROR,
+                on_tool_error_args=localharness_pb2.OnToolErrorArgs(
+                    tool_name="broken",
+                    error_message="failed",
+                    call_id="call_err_789",
+                ),
+            )
+        )
+    )
+    await asyncio.sleep(0.05)
+    self.assertEqual(pre_ids, ["call_pre_123"])
+    self.assertEqual(post_ids, ["call_post_456"])
+    self.assertEqual(error_ids, ["call_err_789"])
+
   def test_extract_media_from_result(self):
     img = types.Image(data=b"\xff\xd8\xff\xd9", mime_type="image/jpeg")
 

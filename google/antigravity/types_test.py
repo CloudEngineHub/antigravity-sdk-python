@@ -720,22 +720,27 @@ class ToolExecutionErrorTest(unittest.TestCase):
   """Validates the ToolExecutionError exception class."""
 
   def test_basic_construction(self):
-    """Verifies construction with required arguments and default server_name=None."""
+    """Verifies construction with required arguments and defaults."""
     err = types.ToolExecutionError("command failed", tool_name="run_command")
     self.assertIsInstance(err, RuntimeError)
     self.assertEqual(str(err), "command failed")
     self.assertEqual(err.tool_name, "run_command")
     self.assertIsNone(err.server_name)
+    self.assertIsNone(err.call_id)
 
-  def test_explicit_server_name(self):
-    """Verifies construction with explicit server_name."""
+  def test_explicit_server_name_and_call_id(self):
+    """Verifies construction with explicit server_name and call_id."""
     err = types.ToolExecutionError(
-        "query failed", tool_name="mcp_tool", server_name="mcp_server"
+        "query failed",
+        tool_name="mcp_tool",
+        server_name="mcp_server",
+        call_id="call_123",
     )
     self.assertIsInstance(err, RuntimeError)
     self.assertEqual(str(err), "query failed")
     self.assertEqual(err.tool_name, "mcp_tool")
     self.assertEqual(err.server_name, "mcp_server")
+    self.assertEqual(err.call_id, "call_123")
 
 
 class ImageTest(unittest.TestCase):
