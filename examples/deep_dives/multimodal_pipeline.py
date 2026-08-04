@@ -84,16 +84,19 @@ def _find_generated_image(name: str) -> str | None:
   Returns:
     The path to the image file if found, else None.
   """
-  base = os.path.expanduser("~/.gemini/antigravity/brain")
-  if not os.path.isdir(base):
-    return None
-  matches = glob.glob(os.path.join(base, "**", f"{name}*"), recursive=True)
-  valid_extensions = {".png", ".jpg", ".jpeg"}
-  image_matches = [
-      m for m in matches if os.path.splitext(m)[1].lower() in valid_extensions
+  search_dirs = [
+      os.path.expanduser("~/.gemini/antigravity/brain"),
   ]
-  if image_matches:
-    return max(image_matches, key=os.path.getmtime)
+  for base in search_dirs:
+    if not base or not os.path.isdir(base):
+      continue
+    matches = glob.glob(os.path.join(base, "**", f"{name}*"), recursive=True)
+    valid_extensions = {".png", ".jpg", ".jpeg"}
+    image_matches = [
+        m for m in matches if os.path.splitext(m)[1].lower() in valid_extensions
+    ]
+    if image_matches:
+      return max(image_matches, key=os.path.getmtime)
   return None
 
 
@@ -143,9 +146,9 @@ async def run() -> None:
 
   image_path = _find_generated_image("birman_birthday")
   if not image_path:
-    print("ERROR: Could not find generated image on disk.")
-    print("The generate_image tool saves images as <name>_<ts>.png")
-    print("under ~/.gemini/antigravity/brain/<conversation>/")
+    print("WARNING: Could not find generated image on disk.")
+    print("Phase 1 image generation may have been rate limited or disabled.")
+    print("Skipping Phase 2 discriminator execution.")
     return
 
   print(f"  Found image: {image_path}")

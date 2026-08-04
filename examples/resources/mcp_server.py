@@ -71,15 +71,8 @@ def _create_server(port: int) -> server.FastMCP:
   return mcp
 
 
-def _find_available_port() -> int:
-  """Find an available port by letting the OS assign one."""
-  with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind(("127.0.0.1", 0))
-    return s.getsockname()[1]
-
-
 @contextlib.asynccontextmanager
-async def run(transport: str) -> AsyncIterator[int]:
+async def run(transport: str, port: int = 0) -> AsyncIterator[int]:
   """Runs the MCP server in a background task and yields the port.
 
   Usage::
@@ -90,11 +83,11 @@ async def run(transport: str) -> AsyncIterator[int]:
 
   Args:
     transport: One of "sse" or "streamable-http".
+    port: Port to listen on (default 0 for automatic ephemeral port allocation).
 
   Yields:
     The port the server is listening on.
   """
-  port = _find_available_port()
   mcp = _create_server(port)
 
   match transport:
@@ -115,8 +108,16 @@ async def run(transport: str) -> AsyncIterator[int]:
   task = asyncio.create_task(uvicorn_server.serve())
   while not uvicorn_server.started:
     await asyncio.sleep(0.05)
+
+  bound_port = port
+  if uvicorn_server.servers:
+    for server_inst in uvicorn_server.servers:
+      if server_inst.sockets:
+        bound_port = server_inst.sockets[0].getsockname()[1]
+        break
+
   try:
-    yield port
+    yield bound_port
   finally:
     uvicorn_server.should_exit = True
     await task
