@@ -1573,6 +1573,28 @@ class McpServerConfigTest(parameterized.TestCase):
           "disabled_tools",
           ["tool2"],
       ),
+      (
+          "http_enabled",
+          types.McpStreamableHttpServer,
+          {
+              "name": "http_server",
+              "url": "http://localhost/http",
+              "enabled_tools": ["tool1"],
+          },
+          "enabled_tools",
+          ["tool1"],
+      ),
+      (
+          "http_disabled",
+          types.McpStreamableHttpServer,
+          {
+              "name": "http_server",
+              "url": "http://localhost/http",
+              "disabled_tools": ["tool2"],
+          },
+          "disabled_tools",
+          ["tool2"],
+      ),
   )
   def test_server_construction_with_filtering(
       self, server_cls, init_kwargs, expected_attr, expected_val
@@ -1598,6 +1620,26 @@ class McpServerConfigTest(parameterized.TestCase):
           {
               "name": "stdio_server",
               "command": "node",
+              "enabled_tools": ["tool1"],
+              "disabled_tools": ["tool1"],
+          },
+      ),
+      (
+          "http_different_tools",
+          types.McpStreamableHttpServer,
+          {
+              "name": "http_server",
+              "url": "http://localhost/http",
+              "enabled_tools": ["tool1"],
+              "disabled_tools": ["tool2"],
+          },
+      ),
+      (
+          "http_same_tool",
+          types.McpStreamableHttpServer,
+          {
+              "name": "http_server",
+              "url": "http://localhost/http",
               "enabled_tools": ["tool1"],
               "disabled_tools": ["tool1"],
           },

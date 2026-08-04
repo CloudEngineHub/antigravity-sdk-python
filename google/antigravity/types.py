@@ -490,18 +490,24 @@ class BaseMcpServerConfig(pydantic.BaseModel):
       underscores are permitted).
     timeout_seconds: Optional timeout in seconds for connecting to the server
       and listing tools.
+    enabled_tools: Explicit allowlist of tools to enable. Mutually exclusive
+      with disabled_tools. When None, all tools from the server are enabled.
+      Only enabled tools are exposed to the model; others are hidden entirely
+      from the model's context, saving tokens.
+    disabled_tools: Explicit denylist of tools to disable. Mutually exclusive
+      with enabled_tools. When None, all tools from the server are enabled.
+      Disabled tools are removed from the model's context entirely, saving
+      tokens and preventing the model from even considering them.
   """
 
   name: Annotated[str, pydantic.Field(pattern=r"^[a-zA-Z0-9_-]+$")]
   timeout_seconds: int | None = None
+  enabled_tools: list[str] | None = None
+  disabled_tools: list[str] | None = None
 
   @pydantic.model_validator(mode="after")
   def _check_mutually_exclusive(self) -> "BaseMcpServerConfig":
-    # Use getattr to dynamically check subclass fields without causing pytype
-    # errors
-    enabled_tools = getattr(self, "enabled_tools", None)
-    disabled_tools = getattr(self, "disabled_tools", None)
-    if enabled_tools is not None and disabled_tools is not None:
+    if self.enabled_tools is not None and self.disabled_tools is not None:
       raise ValueError(
           "enabled_tools and disabled_tools should be mutually exclusive."
       )
@@ -518,22 +524,12 @@ class McpStdioServer(BaseMcpServerConfig):
     args: Arguments to pass to the command.
     env: Environment variables to merge into the spawned subprocess's
       environment.
-    enabled_tools: Explicit allowlist of tools to enable. Mutually exclusive
-      with disabled_tools. When None, all tools from the server are enabled.
-      Only enabled tools are exposed to the model; others are hidden entirely
-      from the model's context, saving tokens.
-    disabled_tools: Explicit denylist of tools to disable. Mutually exclusive
-      with enabled_tools. When None, all tools from the server are enabled.
-      Disabled tools are removed from the model's context entirely, saving
-      tokens and preventing the model from even considering them.
   """
 
   command: str
   type: Literal["stdio"] = "stdio"
   args: list[str] = pydantic.Field(default_factory=list)
   env: dict[str, str] | None = None
-  enabled_tools: list[str] | None = None
-  disabled_tools: list[str] | None = None
 
 
 class McpStreamableHttpServer(BaseMcpServerConfig):
@@ -547,14 +543,6 @@ class McpStreamableHttpServer(BaseMcpServerConfig):
     timeout: Connection timeout in seconds.
     sse_read_timeout: SSE read timeout in seconds.
     terminate_on_close: Whether to terminate the connection on close.
-    enabled_tools: Explicit allowlist of tools to enable. Mutually exclusive
-      with disabled_tools. When None, all tools from the server are enabled.
-      Only enabled tools are exposed to the model; others are hidden entirely
-      from the model's context, saving tokens.
-    disabled_tools: Explicit denylist of tools to disable. Mutually exclusive
-      with enabled_tools. When None, all tools from the server are enabled.
-      Disabled tools are removed from the model's context entirely, saving
-      tokens and preventing the model from even considering them.
   """
 
   url: str
@@ -563,8 +551,6 @@ class McpStreamableHttpServer(BaseMcpServerConfig):
   timeout: float = 30.0
   sse_read_timeout: float = 300.0
   terminate_on_close: bool = True
-  enabled_tools: list[str] | None = None
-  disabled_tools: list[str] | None = None
 
 
 McpServerConfig = McpStdioServer | McpStreamableHttpServer
