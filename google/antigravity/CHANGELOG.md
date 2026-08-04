@@ -7,6 +7,89 @@ All notable changes to the Google Antigravity Python SDK will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.10] - 2026-08-04
+
+The 0.1.10 release introduces support for Gemini Prioritized Inference service tiers, real-time token usage event streaming, stateful context-aware hook decorators, and explicit tool call correlation IDs across hook callbacks. It also standardizes default system instruction merging behavior, fixes WebSocket compaction events, and expands local Gemma model documentation.
+
+### 🌟 Key Highlights
+
+- **Gemini Prioritized Inference Service Tier**: Configure agents to utilize Gemini Prioritized Inference service tiers for high-priority model execution with automated graceful fallback.
+  ```python
+  from google.antigravity import GeminiAPIEndpoint, LocalAgentConfig, types
+
+  # Configure priority inference via GeminiAPIEndpoint
+  options = types.GeminiModelOptions(service_tier=types.ServiceTier.PRIORITY)
+  endpoint = GeminiAPIEndpoint(options=options)
+  config = LocalAgentConfig(endpoint=endpoint)
+  ```
+
+- **Tool Call ID Correlation in Lifecycle Hooks**: Inspect `call_id` attributes on tool executions, errors, and hooks to correlate multi-step tool invocations across lifecycle callbacks.
+  ```python
+  from google.antigravity import ToolExecutionError, types
+  from google.antigravity.hooks import hooks
+
+  @hooks.pre_tool_call_decide
+  async def pre_tool(data: types.ToolCall) -> types.HookResult:
+      print(f"Executing tool {data.name} (call_id={data.id})")
+      return types.HookResult(allow=True)
+
+  @hooks.on_tool_error
+  async def on_error(error: ToolExecutionError) -> None:
+      print(f"Tool {error.tool_name} failed (call_id={error.call_id}): {error}")
+  ```
+
+- **Context-Aware Hook Decorators**: Decorate hook handlers (`@hooks.pre_turn`, `@hooks.post_tool_call`, etc.) that optionally accept `HookContext` as a parameter to maintain state and share data across lifecycle callbacks.
+  ```python
+  from google.antigravity import types
+  from google.antigravity.hooks import HookContext, hooks
+
+  @hooks.pre_turn
+  async def inspect_prompt(context: HookContext, data: str) -> types.HookResult:
+      context["user_prompt"] = data
+      return types.HookResult(allow=True)
+  ```
+
+- **ActionCompaction Event Emission & Hook**: Track context window compaction notifications over WebSockets and intercept them using `@hooks.on_compaction`.
+  ```python
+  from google.antigravity.hooks import hooks
+
+  @hooks.on_compaction
+  async def handle_compaction(data) -> None:
+      print(f"Context compaction occurred: {data}")
+  ```
+
+- **Standardized System Instructions Strategy**: Plain string instructions default to appending to built-in instructions. To override and completely replace built-in instructions, pass `CustomSystemInstructions`.
+  ```python
+  from google.antigravity import CustomSystemInstructions, LocalAgentConfig
+
+  # Override and replace built-in instructions completely
+  config = LocalAgentConfig(
+      system_instructions=CustomSystemInstructions(
+          text="You are a specialized code reviewer."
+      )
+  )
+  ```
+
+---
+
+### 📋 Detailed Changes
+
+- **Features & Enhancements**
+  - **Tool Execution Call ID Correlation**: Added `call_id` attributes to `ToolCall.id`, `ToolResult.id`, `ToolExecutionError.call_id`, and hook payloads to enable tracing of tool execution steps.
+  - **Live Token Usage Reporting**: Introduced real-time `UsageUpdate` event streaming so token usage accumulates live during agent execution rather than delaying updates until state transitions.
+  - **Context-Aware Hook Decorators**: Enabled decorated hook handlers to optionally accept `HookContext` parameters for stateful hook implementations while preserving backward compatibility for stateless handlers.
+  - **Interactive CLI Spinner**: Updated CLI interactive loop spinner to list all active tool names when running concurrent tool calls (e.g., `Running tools 'tool_a', 'tool_b'`).
+  - **Module Re-exports**: Re-exported `ReadUrlContentResult` and `SearchWebResult` in `connections.local` for uniform tool result access.
+  - **Local Gemma Model Documentation**: Added guides and tutorials for running agents locally with Gemma models using LiteRT and OpenAI-compatible endpoints.
+
+- **Model & Default Changes**
+  - **System Instruction Append Policy**: Standardized string system instructions across all connection types to default to an append strategy (combining custom string instructions with built-in instructions). To override this default and completely replace built-in instructions, pass `CustomSystemInstructions(text=...)`.
+  - **LiteRT Token Output Limit**: Increased `max_output_tokens` default in LiteRT local server configuration from 8,192 to 16,384 tokens to prevent truncation during complex reasoning and generation tasks.
+
+- **Bug Fixes**
+  - **ActionCompaction Event Emission**: Fixed issue where compaction notifications were suppressed in external SDK releases, causing `@hooks.on_compaction` handlers and `conversation.compaction_indices` tracking to fail; compaction events now emit properly over WebSockets.
+  - **MCP Test Server Startup**: Fixed a race condition where the HTTP port was exposed before uvicorn server startup completed, which previously caused intermittent `ConnectionRefusedError` failures during test initialization.
+
 ## [0.1.9] - 2026-07-27
 
 Release 0.1.9 of the Google Antigravity Python SDK adds model-call retry/backoff configuration, improves tool registration for custom functions, adds missing `BuiltinTools` exports, fixes user audio payload processing, and adds connection `DebugConfig` support along with `ToolExecutionError` handling.
