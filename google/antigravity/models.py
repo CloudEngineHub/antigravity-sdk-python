@@ -63,6 +63,23 @@ class ThinkingLevel(str, enum.Enum):
   EXTRA_HIGH = "extra_high"
 
 
+class ServiceTier(str, enum.Enum):
+  """Service tier for Gemini model inference.
+
+  Controls the compute queue priority and rate limit fallback behavior. See:
+  https://ai.google.dev/gemini-api/docs/priority-inference
+
+  Attributes:
+    STANDARD: Standard processing tier.
+    PRIORITY: Prioritized inference tier.
+    FLEX: Flex processing tier.
+  """
+
+  STANDARD = "standard"
+  PRIORITY = "priority"
+  FLEX = "flex"
+
+
 class ModelType(str, enum.Enum):
   """Discriminator for model purpose."""
 
@@ -86,6 +103,7 @@ class GeminiModelOptions(pydantic.BaseModel):
   """Gemini-specific model options."""
 
   thinking_level: ThinkingLevel | None = None
+  service_tier: ServiceTier | None = None
 
 
 class GeminiAPIEndpoint(ModelEndpoint):

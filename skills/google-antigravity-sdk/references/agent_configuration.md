@@ -72,6 +72,42 @@ Note: Gemini Enterprise Agent Platform authentication relies on Application
 Default Credentials (ADC). Ensure you have run `gcloud auth application-default
 login` in your environment.
 
+### Prioritized Inference (`service_tier="priority"`)
+
+To enable Gemini Prioritized Inference, manually construct a `GeminiAPIEndpoint`
+or `VertexEndpoint` with `GeminiModelOptions`:
+
+```python
+from google.antigravity import (
+    Agent,
+    GeminiAPIEndpoint,
+    LocalAgentConfig,
+    types,
+)
+
+# Configure priority inference by manually constructing an endpoint.
+options = types.GeminiModelOptions(service_tier=types.ServiceTier.PRIORITY)
+endpoint = GeminiAPIEndpoint(options=options)
+config = LocalAgentConfig(endpoint=endpoint)
+
+async with Agent(config=config) as agent:
+  response = await agent.chat("Explain quantum computing in one sentence.")
+
+  # Inspect usage metadata to detect server-side rate limit downgrades.
+  if (
+      response.usage_metadata
+      and response.usage_metadata.service_tier == types.ServiceTier.STANDARD
+  ):
+    print("Notice: Request was gracefully downgraded to standard tier.")
+```
+
+> [!IMPORTANT] **Pricing Notice:** Priority tier requests are billed at a higher
+> rate than Standard tier requests. When overflow traffic is gracefully
+> downgraded to Standard tier due to dynamic rate limiting, those downgraded
+> requests are billed at standard rates. Please check the linked documentation
+> for specific pricing, fallback thresholds, and feature details:
+> [Gemini Priority Inference Documentation](https://ai.google.dev/gemini-api/docs/priority-inference).
+
 ### Application Data Directory Override (Artifact & Scratch Storage)
 
 By default, the agent stores generated artifacts (like `task.md`), scratch

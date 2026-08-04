@@ -65,6 +65,7 @@ class EventProcessorHelperTest(absltest.TestCase):
         candidates_token_count=75,
         thoughts_token_count=25,
         total_token_count=250,
+        service_tier="priority",
     )
     meta = event_processor.parse_usage_metadata(pb)
     self.assertEqual(meta.prompt_token_count, 100)
@@ -72,6 +73,7 @@ class EventProcessorHelperTest(absltest.TestCase):
     self.assertEqual(meta.candidates_token_count, 75)
     self.assertEqual(meta.thoughts_token_count, 25)
     self.assertEqual(meta.total_token_count, 250)
+    self.assertEqual(meta.service_tier, types.ServiceTier.PRIORITY)
 
   def test_parse_usage_metadata_empty(self):
     pb = localharness_pb2.UsageMetadata()
@@ -81,6 +83,7 @@ class EventProcessorHelperTest(absltest.TestCase):
     self.assertIsNone(meta.candidates_token_count)
     self.assertIsNone(meta.thoughts_token_count)
     self.assertIsNone(meta.total_token_count)
+    self.assertIsNone(meta.service_tier)
 
 
 class LocalConnectionStepFromDictTest(absltest.TestCase):

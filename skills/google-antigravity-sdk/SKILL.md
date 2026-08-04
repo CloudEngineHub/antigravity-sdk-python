@@ -46,8 +46,9 @@ relevant information.
     the Google Antigravity SDK (Agent, Conversation, Connection), read
     `references/architecture.md`.
 -   If the user needs to perform advanced agent configuration, select
-    appropriate models, or understand the critical rules for model identifiers
-    to avoid assumptions, read `references/agent_configuration.md`.
+    appropriate models, configure connection reliability (e.g., if experiencing
+    latency or reliability issues), or understand the critical rules for model
+    identifiers to avoid assumptions, read `references/agent_configuration.md`.
 -   If the user needs to extend an agent's capabilities by integrating Model
     Context Protocol (MCP) servers, or configure tool permissions for the agent,
     read `references/mcp_integration.md`.

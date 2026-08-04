@@ -188,6 +188,9 @@ def parse_usage_metadata(
       total_token_count=usage_metadata.total_token_count
       if usage_metadata.HasField("total_token_count")
       else None,
+      service_tier=types.ServiceTier(usage_metadata.service_tier)
+      if usage_metadata.service_tier
+      else None,
   )
 
 

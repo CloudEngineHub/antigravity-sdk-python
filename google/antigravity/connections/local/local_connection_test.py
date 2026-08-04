@@ -1709,6 +1709,85 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
           f" '{level.value}'",
       )
 
+  def test_models_service_tier_set(self):
+    """Verifies that service_tier on ModelTarget maps to the proto field."""
+    strategy = self._make_strategy(
+        models=[
+            types.ModelTarget(
+                name=DEFAULT_MODEL,
+                types=[types.ModelType.TEXT],
+                endpoint=types.GeminiAPIEndpoint(
+                    options=types.GeminiModelOptions(
+                        service_tier=types.ServiceTier.PRIORITY,
+                    ),
+                ),
+            )
+        ]
+    )
+    config = strategy._build_harness_config()
+    self.assertEqual(
+        config.models[0].gemini_api_endpoint.options.service_tier, "priority"
+    )
+
+  def test_models_service_tier_none_omitted(self):
+    """Verifies that service_tier=None leaves the proto field at its default."""
+    strategy = self._make_strategy(
+        models=[
+            types.ModelTarget(
+                name=DEFAULT_MODEL,
+                types=[types.ModelType.TEXT],
+                endpoint=types.GeminiAPIEndpoint(
+                    options=types.GeminiModelOptions(service_tier=None),
+                ),
+            )
+        ]
+    )
+    config = strategy._build_harness_config()
+    self.assertFalse(config.models[0].gemini_api_endpoint.HasField("options"))
+
+  def test_models_service_tier_all_values(self):
+    """Verifies all ServiceTier enum values produce correct proto strings."""
+    for tier in types.ServiceTier:
+      strategy = self._make_strategy(
+          models=[
+              types.ModelTarget(
+                  name=DEFAULT_MODEL,
+                  types=[types.ModelType.TEXT],
+                  endpoint=types.GeminiAPIEndpoint(
+                      options=types.GeminiModelOptions(service_tier=tier),
+                  ),
+              )
+          ]
+      )
+      config = strategy._build_harness_config()
+      self.assertEqual(
+          config.models[0].gemini_api_endpoint.options.service_tier,
+          tier.value,
+          f"ServiceTier.{tier.name} should produce proto string '{tier.value}'",
+      )
+
+  def test_vertex_endpoint_service_tier_set(self):
+    """Verifies that service_tier on VertexEndpoint maps to the proto field."""
+    strategy = self._make_strategy(
+        models=[
+            types.ModelTarget(
+                name=DEFAULT_MODEL,
+                types=[types.ModelType.TEXT],
+                endpoint=types.VertexEndpoint(
+                    project="test-project",
+                    location="us-central1",
+                    options=types.GeminiModelOptions(
+                        service_tier=types.ServiceTier.PRIORITY,
+                    ),
+                ),
+            )
+        ]
+    )
+    config = strategy._build_harness_config()
+    self.assertEqual(
+        config.models[0].vertex_endpoint.options.service_tier, "priority"
+    )
+
   def test_vertex_config_propagates(self):
     """Verifies that Vertex configuration fields propagate to proto."""
     models = [

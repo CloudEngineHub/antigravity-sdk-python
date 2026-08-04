@@ -86,11 +86,16 @@ def to_proto_model_type(
 def build_gemini_options_proto(
     options: types.GeminiModelOptions | None,
 ) -> localharness_pb2.GeminiModelOptions:
+  """Converts SDK GeminiModelOptions to localharness protobuf representation."""
   proto = localharness_pb2.GeminiModelOptions()
   if options:
-    proto.thinking_level = (
-        options.thinking_level.value if options.thinking_level else ""
-    )
+    if options.thinking_level:
+      proto.thinking_level = str(options.thinking_level.value)
+    if options.service_tier:
+      if hasattr(options.service_tier, "value"):
+        proto.service_tier = str(options.service_tier.value)
+      else:
+        proto.service_tier = str(options.service_tier)
   return proto
 
 

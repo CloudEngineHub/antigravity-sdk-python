@@ -1715,6 +1715,21 @@ class UsageMetadataTest(unittest.TestCase):
     self.assertEqual(res.thoughts_token_count, 0)
     self.assertEqual(res.total_token_count, 0)
 
+  def test_add_operator_service_tier(self):
+    """Verifies that __add__ merges service_tier commutatively."""
+    u_none = types.UsageMetadata()
+    u_std = types.UsageMetadata(service_tier=types.ServiceTier.STANDARD)
+    u_pri = types.UsageMetadata(service_tier=types.ServiceTier.PRIORITY)
+    u_flex = types.UsageMetadata(service_tier=types.ServiceTier.FLEX)
+
+    self.assertEqual((u_pri + u_pri).service_tier, types.ServiceTier.PRIORITY)
+    self.assertEqual((u_flex + u_flex).service_tier, types.ServiceTier.FLEX)
+    self.assertEqual((u_pri + u_none).service_tier, types.ServiceTier.PRIORITY)
+    self.assertEqual((u_none + u_flex).service_tier, types.ServiceTier.FLEX)
+    self.assertEqual((u_pri + u_flex).service_tier, types.ServiceTier.STANDARD)
+    self.assertEqual((u_flex + u_pri).service_tier, types.ServiceTier.STANDARD)
+    self.assertEqual((u_pri + u_std).service_tier, types.ServiceTier.STANDARD)
+
   def test_add_operator_invalid_type(self):
     """Verifies that __add__ returns NotImplemented for invalid types."""
     u = types.UsageMetadata(prompt_token_count=10)

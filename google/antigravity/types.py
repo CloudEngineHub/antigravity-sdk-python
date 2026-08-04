@@ -34,6 +34,7 @@ from google.antigravity.models import GeminiModelOptions
 from google.antigravity.models import ModelEndpoint
 from google.antigravity.models import ModelTarget
 from google.antigravity.models import ModelType
+from google.antigravity.models import ServiceTier
 from google.antigravity.models import ThinkingLevel
 from google.antigravity.models import VertexEndpoint
 
@@ -41,6 +42,7 @@ _BaseMediaT = TypeVar("_BaseMediaT", bound="_BaseMedia")
 
 __all__ = [
     "ThinkingLevel",
+    "ServiceTier",
     "ModelType",
     "ModelEndpoint",
     "GeminiAPIEndpoint",
@@ -582,6 +584,7 @@ class UsageMetadata(pydantic.BaseModel):
       (excluding thinking).
     thoughts_token_count: Number of tokens used for thinking/reasoning.
     total_token_count: Sum of prompt + candidates + thinking tokens.
+    service_tier: Service tier used for inference (e.g. "priority").
   """
 
   # Input tokens.
@@ -595,9 +598,19 @@ class UsageMetadata(pydantic.BaseModel):
   # Total tokens (prompt + candidates + thoughts).
   total_token_count: int | None = None
 
+  # Service tier.
+  service_tier: ServiceTier | None = None
+
   def __add__(self, other: UsageMetadata) -> UsageMetadata:
     if not isinstance(other, UsageMetadata):
       return NotImplemented
+    if self.service_tier == other.service_tier:
+      merged_tier = self.service_tier
+    elif self.service_tier is None or other.service_tier is None:
+      merged_tier = self.service_tier or other.service_tier
+    else:
+      # When combining different service tiers, default to STANDARD.
+      merged_tier = ServiceTier.STANDARD
     return UsageMetadata(
         prompt_token_count=(self.prompt_token_count or 0)
         + (other.prompt_token_count or 0),
@@ -609,6 +622,7 @@ class UsageMetadata(pydantic.BaseModel):
         + (other.thoughts_token_count or 0),
         total_token_count=(self.total_token_count or 0)
         + (other.total_token_count or 0),
+        service_tier=merged_tier,
     )
 
   def __sub__(self, other: UsageMetadata) -> UsageMetadata:
