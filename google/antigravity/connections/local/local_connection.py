@@ -84,7 +84,7 @@ def to_proto_agent_mode(
 ) -> localharness_pb2.AgentMode:
   if mode is not None and mode in _AGENT_MODE_MAP:
     return _AGENT_MODE_MAP[mode]
-  return localharness_pb2.AGENT_MODE_INTERACTIVE
+  return localharness_pb2.AGENT_MODE_AUTONOMOUS
 
 
 def to_proto_model_type(

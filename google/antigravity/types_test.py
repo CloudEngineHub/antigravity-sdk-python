@@ -673,7 +673,7 @@ class CapabilitiesConfigTest(unittest.TestCase):
     """Verifies defaults: subagents enabled, no tool lists, no threshold."""
     config = types.CapabilitiesConfig()
     self.assertTrue(config.enable_subagents)
-    self.assertEqual(config.agent_mode, types.AgentMode.INTERACTIVE)
+    self.assertEqual(config.agent_mode, types.AgentMode.AUTONOMOUS)
     self.assertIsNone(config.enabled_tools)
     self.assertIsNone(config.disabled_tools)
     self.assertIsNone(config.compaction_threshold)
@@ -681,10 +681,10 @@ class CapabilitiesConfigTest(unittest.TestCase):
 
   def test_agent_mode_explicit(self):
     """Verifies that agent_mode can be explicitly set via enum or string."""
-    config = types.CapabilitiesConfig(agent_mode=types.AgentMode.AUTONOMOUS)
-    self.assertEqual(config.agent_mode, types.AgentMode.AUTONOMOUS)
-    config_str = types.CapabilitiesConfig(agent_mode="autonomous")
-    self.assertEqual(config_str.agent_mode, types.AgentMode.AUTONOMOUS)
+    config = types.CapabilitiesConfig(agent_mode=types.AgentMode.INTERACTIVE)
+    self.assertEqual(config.agent_mode, types.AgentMode.INTERACTIVE)
+    config_str = types.CapabilitiesConfig(agent_mode="interactive")
+    self.assertEqual(config_str.agent_mode, types.AgentMode.INTERACTIVE)
 
   def test_enabled_tools(self):
     """Verifies that enabled_tools accepts a list of BuiltinTools."""
@@ -1697,15 +1697,15 @@ class SubagentCapabilitiesTest(unittest.TestCase):
 
   def test_defaults(self):
     sc = types.SubagentCapabilities()
-    self.assertEqual(sc.agent_mode, types.AgentMode.INTERACTIVE)
+    self.assertEqual(sc.agent_mode, types.AgentMode.AUTONOMOUS)
     self.assertIsNone(sc.enabled_tools)
     self.assertIsNone(sc.disabled_tools)
 
   def test_agent_mode_explicit(self):
-    sc = types.SubagentCapabilities(agent_mode=types.AgentMode.AUTONOMOUS)
-    self.assertEqual(sc.agent_mode, types.AgentMode.AUTONOMOUS)
-    sc_str = types.SubagentCapabilities(agent_mode="autonomous")
-    self.assertEqual(sc_str.agent_mode, types.AgentMode.AUTONOMOUS)
+    sc = types.SubagentCapabilities(agent_mode=types.AgentMode.INTERACTIVE)
+    self.assertEqual(sc.agent_mode, types.AgentMode.INTERACTIVE)
+    sc_str = types.SubagentCapabilities(agent_mode="interactive")
+    self.assertEqual(sc_str.agent_mode, types.AgentMode.INTERACTIVE)
 
   def test_mutually_exclusive_ok_enabled(self):
     sc = types.SubagentCapabilities(

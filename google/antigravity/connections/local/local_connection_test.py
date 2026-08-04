@@ -1202,28 +1202,28 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     self.assertEmpty(config.models)
     self.assertFalse(config.HasField("system_instructions"))
     self.assertEqual(len(config.workspaces), 0)
-    self.assertEqual(config.agent_mode, localharness_pb2.AGENT_MODE_INTERACTIVE)
+    self.assertEqual(config.agent_mode, localharness_pb2.AGENT_MODE_AUTONOMOUS)
 
   def test_agent_mode_config_produces_valid_proto(self):
     """Verifies that agent_mode sets HarnessConfig.agent_mode."""
     strategy = self._make_strategy(
         capabilities_config=types.CapabilitiesConfig(
-            agent_mode=types.AgentMode.AUTONOMOUS
+            agent_mode=types.AgentMode.INTERACTIVE
         )
     )
     config = strategy._build_harness_config()
-    self.assertEqual(config.agent_mode, localharness_pb2.AGENT_MODE_AUTONOMOUS)
+    self.assertEqual(config.agent_mode, localharness_pb2.AGENT_MODE_INTERACTIVE)
 
   def test_subagent_agent_mode_config_produces_valid_proto(self):
     """Verifies that SubagentCapabilities.agent_mode sets CustomAgent.agent_mode."""
     strategy = self._make_strategy(
         subagents=[
             types.SubagentConfig(
-                name="autonomous_subagent",
-                description="A subagent that runs in autonomous mode.",
+                name="interactive_subagent",
+                description="A subagent that runs in interactive mode.",
                 model="gemini-2.5-pro",
                 capabilities=types.SubagentCapabilities(
-                    agent_mode=types.AgentMode.AUTONOMOUS
+                    agent_mode=types.AgentMode.INTERACTIVE
                 ),
             )
         ]
@@ -1232,7 +1232,7 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     self.assertLen(config.custom_subagents, 1)
     self.assertEqual(
         config.custom_subagents[0].agent_mode,
-        localharness_pb2.AGENT_MODE_AUTONOMOUS,
+        localharness_pb2.AGENT_MODE_INTERACTIVE,
     )
 
   def test_legacy_shorthands_api_key_produces_valid_proto(self):

@@ -171,14 +171,14 @@ class SubagentCapabilities(pydantic.BaseModel):
       AgentMode.AUTONOMOUS incentivizes the agent to solve the task on their
       own from start to finish while AgentMode.INTERACTIVE makes the agent work
       collaboratively with a human, asking for clarifications and keeping
-      them in the loop if needed. Defaults to AgentMode.INTERACTIVE.
+      them in the loop if needed. Defaults to AgentMode.AUTONOMOUS.
     enabled_tools: Explicit allowlist of builtin tools to enable. Mutually
       exclusive with disabled_tools. When None, the harness defaults are used.
     disabled_tools: Explicit denylist of builtin tools to disable. Mutually
       exclusive with enabled_tools. When None, the harness defaults are used.
   """
 
-  agent_mode: AgentMode = AgentMode.INTERACTIVE
+  agent_mode: AgentMode = AgentMode.AUTONOMOUS
   enabled_tools: list[BuiltinTools] | None = None
   disabled_tools: list[BuiltinTools] | None = None
 
@@ -367,7 +367,7 @@ class CapabilitiesConfig(pydantic.BaseModel):
       AgentMode.AUTONOMOUS incentivizes the agent to solve the task on their
       own from start to finish while AgentMode.INTERACTIVE makes the agent work
       collaboratively with a human, asking for clarifications and keeping
-      them in the loop if needed. Defaults to AgentMode.INTERACTIVE.
+      them in the loop if needed. Defaults to AgentMode.AUTONOMOUS.
     enabled_tools: Explicit allowlist of builtin tools to enable. Mutually
       exclusive with disabled_tools. When None, the harness defaults are used
       (all tools enabled). Disabled tools are removed from the model's context,
@@ -382,7 +382,7 @@ class CapabilitiesConfig(pydantic.BaseModel):
   """
 
   enable_subagents: bool = True
-  agent_mode: AgentMode = AgentMode.INTERACTIVE
+  agent_mode: AgentMode = AgentMode.AUTONOMOUS
   enabled_tools: list[BuiltinTools] | None = None
   disabled_tools: list[BuiltinTools] | None = None
   compaction_threshold: int | None = None
