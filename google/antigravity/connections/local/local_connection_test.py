@@ -2517,23 +2517,6 @@ class GetDefaultBinaryPathTest(unittest.TestCase):
 
   @mock.patch.dict("os.environ", {}, clear=True)
   @mock.patch("importlib.metadata.distribution")
-  def test_returns_internal_pyglib_resource_path(self, mock_dist):
-    mock_resources = mock.MagicMock()
-    mock_resources.GetResourceFilename.return_value = (
-        "/g3/runfiles/localharness"
-    )
-
-    with mock.patch.object(local_connection, "resources", mock_resources):
-      path = local_connection._get_default_binary_path()
-      self.assertEqual(path, "/g3/runfiles/localharness")
-      mock_resources.GetResourceFilename.assert_called_once_with(
-          "antigravity_harness"
-      )
-      mock_dist.assert_not_called()
-
-  @mock.patch.dict("os.environ", {}, clear=True)
-  @mock.patch.object(local_connection, "resources", None)
-  @mock.patch("importlib.metadata.distribution")
   @mock.patch("importlib.resources.files")
   @mock.patch("os.path.exists")
   def test_returns_external_wheel_path(
