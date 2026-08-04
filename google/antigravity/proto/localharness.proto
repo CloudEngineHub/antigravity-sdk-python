@@ -642,12 +642,29 @@ message PreTurnResult {
   .antigravity.localharness.PreTurnResult.Decision decision = 1;
   string reason = 2;
 }
+message SubagentSkillsConfig {
+  message InheritConfig {
+    repeated string extra_skills_paths = 1;
+  }
+  message NoneConfig {}
+  message OverrideConfig {
+    repeated string skills_paths = 1;
+  }
+  oneof mode {
+    .antigravity.localharness.SubagentSkillsConfig.InheritConfig
+        inherit_config = 1;
+    .antigravity.localharness.SubagentSkillsConfig.NoneConfig none_config = 2;
+    .antigravity.localharness.SubagentSkillsConfig.OverrideConfig
+        override_config = 3;
+  }
+}
 message CustomAgent {
   string name = 1;
   string description = 2;
   .antigravity.localharness.SystemInstructions system_instructions = 3;
   .antigravity.localharness.HarnessSideTools harness_side_tools = 4;
   repeated .antigravity.localharness.Tool tools = 5;
+  .antigravity.localharness.SubagentSkillsConfig skills_config = 6;
 }
 message ToolOutputTruncation {
   message TruncateStrategy {
