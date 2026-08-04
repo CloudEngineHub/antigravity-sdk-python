@@ -658,6 +658,14 @@ class BuiltinToolsTest(parameterized.TestCase):
     self.assertEqual(types.BuiltinTools.none(), [])
 
 
+class AgentModeTest(unittest.TestCase):
+  """Tests for the AgentMode enum."""
+
+  def test_enum_values(self):
+    self.assertEqual(types.AgentMode.AUTONOMOUS, "autonomous")
+    self.assertEqual(types.AgentMode.INTERACTIVE, "interactive")
+
+
 class CapabilitiesConfigTest(unittest.TestCase):
   """Tests for the CapabilitiesConfig Pydantic model."""
 
@@ -665,10 +673,18 @@ class CapabilitiesConfigTest(unittest.TestCase):
     """Verifies defaults: subagents enabled, no tool lists, no threshold."""
     config = types.CapabilitiesConfig()
     self.assertTrue(config.enable_subagents)
+    self.assertEqual(config.agent_mode, types.AgentMode.INTERACTIVE)
     self.assertIsNone(config.enabled_tools)
     self.assertIsNone(config.disabled_tools)
     self.assertIsNone(config.compaction_threshold)
     self.assertIsNone(config.finish_tool_schema_json)
+
+  def test_agent_mode_explicit(self):
+    """Verifies that agent_mode can be explicitly set via enum or string."""
+    config = types.CapabilitiesConfig(agent_mode=types.AgentMode.AUTONOMOUS)
+    self.assertEqual(config.agent_mode, types.AgentMode.AUTONOMOUS)
+    config_str = types.CapabilitiesConfig(agent_mode="autonomous")
+    self.assertEqual(config_str.agent_mode, types.AgentMode.AUTONOMOUS)
 
   def test_enabled_tools(self):
     """Verifies that enabled_tools accepts a list of BuiltinTools."""
@@ -700,6 +716,40 @@ class CapabilitiesConfigTest(unittest.TestCase):
     """Verifies that compaction_threshold accepts an explicit integer."""
     config = types.CapabilitiesConfig(compaction_threshold=50000)
     self.assertEqual(config.compaction_threshold, 50000)
+
+  def test_ask_question_warning_when_not_interactive(self):
+    """Verifies warning when ASK_QUESTION is enabled and not interactive."""
+    with self.assertLogs(level="WARNING") as log_cm:
+      types.CapabilitiesConfig(
+          enabled_tools=[types.BuiltinTools.ASK_QUESTION],
+          agent_mode=types.AgentMode.AUTONOMOUS,
+      )
+    self.assertTrue(
+        any("ASK_QUESTION is enabled" in msg for msg in log_cm.output)
+    )
+
+  def test_ask_question_no_warning_when_interactive(self):
+    """Verifies no warning when ASK_QUESTION is enabled in interactive mode."""
+    with mock.patch("logging.warning") as mock_warn:
+      types.CapabilitiesConfig(
+          enabled_tools=[types.BuiltinTools.ASK_QUESTION],
+          agent_mode=types.AgentMode.INTERACTIVE,
+      )
+      mock_warn.assert_not_called()
+
+  def test_subagent_ask_question_warning_when_not_interactive(self):
+    """Verifies that a warning is logged for SubagentCapabilities."""
+    with self.assertLogs(level="WARNING") as log_cm:
+      types.SubagentCapabilities(
+          enabled_tools=[types.BuiltinTools.ASK_QUESTION],
+          agent_mode=types.AgentMode.AUTONOMOUS,
+      )
+    self.assertTrue(
+        any(
+            "ASK_QUESTION is enabled on subagent" in msg
+            for msg in log_cm.output
+        )
+    )
 
 
 class AntigravityConnectionErrorTest(unittest.TestCase):
@@ -1605,8 +1655,15 @@ class SubagentCapabilitiesTest(unittest.TestCase):
 
   def test_defaults(self):
     sc = types.SubagentCapabilities()
+    self.assertEqual(sc.agent_mode, types.AgentMode.INTERACTIVE)
     self.assertIsNone(sc.enabled_tools)
     self.assertIsNone(sc.disabled_tools)
+
+  def test_agent_mode_explicit(self):
+    sc = types.SubagentCapabilities(agent_mode=types.AgentMode.AUTONOMOUS)
+    self.assertEqual(sc.agent_mode, types.AgentMode.AUTONOMOUS)
+    sc_str = types.SubagentCapabilities(agent_mode="autonomous")
+    self.assertEqual(sc_str.agent_mode, types.AgentMode.AUTONOMOUS)
 
   def test_mutually_exclusive_ok_enabled(self):
     sc = types.SubagentCapabilities(
