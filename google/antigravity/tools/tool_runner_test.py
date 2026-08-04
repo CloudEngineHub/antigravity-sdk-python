@@ -20,6 +20,7 @@ from typing import Optional, Union
 from unittest import mock
 
 from absl.testing import absltest
+import pydantic
 
 from google.antigravity import types as sdk_types
 from google.antigravity.tools import tool_runner
@@ -31,6 +32,14 @@ def _sample_tool(arg1: str) -> str:
 
 async def _async_tool(x: int, y: int) -> int:
   return x + y
+
+
+class _CustomData(pydantic.BaseModel):
+  value: int
+
+
+def _tool_with_string_ann(data: "_CustomData") -> int:
+  return data.value
 
 
 class ToolRunnerTest(absltest.TestCase):
@@ -287,6 +296,16 @@ class ToolRunnerTest(absltest.TestCase):
     self.assertIsInstance(coerced["b"], float)
     self.assertIsInstance(coerced["c"], bool)
     self.assertIsInstance(coerced["d"], str)
+
+  def test_coerce_args_string_annotations(self):
+    """Verifies that _coerce_args handles string annotations (forward refs)."""
+    runner = tool_runner.ToolRunner([_tool_with_string_ann])
+    coerced = runner._coerce_args(
+        _tool_with_string_ann, {"data": {"value": 42}}
+    )
+    self.assertIn("data", coerced)
+    self.assertIsInstance(coerced["data"], _CustomData)
+    self.assertEqual(coerced["data"].value, 42)
 
   def test_coerce_args_optional_and_union(self):
     """Verifies that _coerce_args handles Optional and Union types."""

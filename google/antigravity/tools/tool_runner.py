@@ -281,6 +281,11 @@ class ToolRunner:
     except (ValueError, TypeError):
       return kwargs
 
+    try:
+      hints = typing.get_type_hints(target)
+    except (TypeError, NameError, AttributeError):
+      hints = {}
+
     coerced = {}
     for name, param in sig.parameters.items():
       if name not in kwargs:
@@ -292,7 +297,7 @@ class ToolRunner:
         coerced[name] = kwargs[name]
         continue
       val = kwargs[name]
-      ann = param.annotation
+      ann = hints.get(name, param.annotation)
       if ann is inspect.Parameter.empty or val is None:
         coerced[name] = val
         continue
