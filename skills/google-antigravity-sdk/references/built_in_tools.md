@@ -5,6 +5,12 @@ In the `LocalAgentConfig` (used for local development), all built-in tools are
 `confirm_run_command()` policy — all other tools are allowed. See
 [Safety Policies](safety_policies.md) to customize this behavior.
 
+> [!NOTE]
+> Agents default to `agent_mode=AgentMode.AUTONOMOUS`. When using interactive
+> tools like `BuiltinTools.ASK_QUESTION`, configure
+> `agent_mode=AgentMode.INTERACTIVE` in `CapabilitiesConfig` so the agent
+> actively collaborates with and prompts the user.
+
 To override a built-in tool with a custom implementation, you can define a
 custom tool with the same name. See
 [Custom Tool Example](../examples/getting_started/custom_tool.md#overriding-built-in-tools)

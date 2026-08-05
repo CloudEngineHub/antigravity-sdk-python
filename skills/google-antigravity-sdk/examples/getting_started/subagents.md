@@ -32,3 +32,25 @@ async with Agent(config) as agent:
 The result from the subagent is typically delivered back to the main agent,
 which then presents it or uses it. The `await response.text()` call will return
 the final aggregated response, including the output produced by the subagent.
+
+## Configuring Subagent Capabilities and Mode
+
+Subagents default to `agent_mode=AgentMode.AUTONOMOUS`. You can declare custom
+subagents and customize their capabilities and execution mode via
+`SubagentConfig` and `SubagentCapabilities`:
+
+```python
+from google.antigravity import Agent, LocalAgentConfig, types
+
+config = LocalAgentConfig(
+    subagents=[
+        types.SubagentConfig(
+            name="researcher",
+            description="Researches topics autonomously.",
+            capabilities=types.SubagentCapabilities(
+                agent_mode=types.AgentMode.AUTONOMOUS,
+            ),
+        ),
+    ],
+)
+```
