@@ -33,6 +33,7 @@ Includes:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 import contextvars
 import sys
 import threading
@@ -55,8 +56,7 @@ async def async_input(prompt: str = "") -> str:
 
   Using `asyncio.to_thread(input)` is not an option as executor runs in a
   non-daemon thread and will hang waiting for "enter" to be pressed on the
-  asyncio loop terdown.
-
+  asyncio loop teardown.
 
   Args:
     prompt: The prompt to display.
@@ -320,13 +320,14 @@ class AskQuestionHook(hooks.OnInteractionHook):
       Spinner.resume_active()
 
 
-def _upgrade_policies_list(policies: list[Any]) -> list[Any]:
+def _upgrade_policies_list(
+    policies: Sequence[policy_module.Policy | Sequence[policy_module.Policy]],
+) -> list[policy_module.Policy]:
   """Upgrades RUN_COMMAND deny policies in place to ASK_USER policy."""
   upgraded = []
-  for p in policies:
+  for p in policy_module.flatten_policies(policies):
     if (
-        isinstance(p, policy_module.Policy)
-        and p.tool == types.BuiltinTools.RUN_COMMAND.value
+        p.tool == types.BuiltinTools.RUN_COMMAND.value
         and p.decision == policy_module.Decision.DENY
         and p.when is None
     ):

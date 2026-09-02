@@ -293,6 +293,28 @@ class UpgradePoliciesListTest(unittest.TestCase):
     self.assertEqual(upgraded[0].tool, types.BuiltinTools.RUN_COMMAND.value)
     self.assertEqual(upgraded[1], other_policy)
 
+  def test_upgrade_nested_policy_sequences(self):
+    """Verifies that nested policy lists from builders are flattened and upgraded."""
+    policies = [
+        policy.confirm_run_command(),
+    ]
+    upgraded = interactive._upgrade_policies_list(policies)
+    self.assertEqual(len(upgraded), 2)
+    self.assertEqual(upgraded[0].decision, policy.Decision.ASK_USER)
+    self.assertEqual(upgraded[0].tool, types.BuiltinTools.RUN_COMMAND.value)
+    self.assertEqual(upgraded[1].decision, policy.Decision.APPROVE)
+
+  def test_preserves_conditional_deny(self):
+    """Verifies that conditional deny policies (with a `when` predicate) are kept."""
+    p_cond = policy.deny(
+        types.BuiltinTools.RUN_COMMAND.value,
+        when=lambda tc: "rm" in tc.args.get("cmd", ""),
+    )
+    upgraded = interactive._upgrade_policies_list([p_cond])
+    self.assertEqual(len(upgraded), 1)
+    self.assertEqual(upgraded[0].decision, policy.Decision.DENY)
+    self.assertIsNotNone(upgraded[0].when)
+
 
 class RunInteractiveLoopTest(unittest.IsolatedAsyncioTestCase):
   """Tests for run_interactive_loop."""
