@@ -145,9 +145,19 @@ class ToolWithSchema:
 
   def __init__(self, fn: Callable[..., Any], input_schema: dict[str, Any]):
     self.fn = fn
+    try:
+      functools.update_wrapper(self, fn, updated=())
+    except Exception:  # pylint: disable=broad-except
+      pass
     self.input_schema = input_schema
-    self.__name__ = getattr(fn, "__name__", None) or type(fn).__name__
-    self.__doc__ = getattr(fn, "__doc__", None)
+    if not getattr(self, "__name__", None):
+      self.__name__ = getattr(fn, "__name__", None) or type(fn).__name__
+    if not getattr(self, "__qualname__", None):
+      self.__qualname__ = (
+          getattr(fn, "__qualname__", None) or type(fn).__qualname__
+      )
+    if not getattr(self, "__doc__", None):
+      self.__doc__ = getattr(fn, "__doc__", None)
 
   def __call__(self, *args: Any, **kwargs: Any) -> Any:
     return self.fn(*args, **kwargs)

@@ -281,6 +281,31 @@ class ToolRunnerTest(absltest.TestCase):
     tool = SyncCallable()
     wrapped = tool_runner.ToolWithSchema(tool, {"type": "object"})
     self.assertEqual(wrapped.__name__, "SyncCallable")
+    self.assertEqual(wrapped.__qualname__, SyncCallable.__qualname__)
+
+  def test_tool_with_schema_preserves_wrapper_metadata(self):
+    """Verifies ToolWithSchema preserves function metadata and __wrapped__."""
+    import inspect  # pylint: disable=g-import-not-at-top
+
+    def custom_func(x: int) -> int:
+      """Custom documentation."""
+      return x * 2
+
+    wrapped = tool_runner.ToolWithSchema(custom_func, {"type": "object"})
+    self.assertEqual(wrapped.__name__, "custom_func")
+    self.assertEqual(wrapped.__doc__, "Custom documentation.")
+    self.assertEqual(wrapped.__module__, custom_func.__module__)
+    self.assertEqual(wrapped.__qualname__, custom_func.__qualname__)
+    self.assertIs(getattr(wrapped, "__wrapped__", None), custom_func)
+    self.assertIs(inspect.unwrap(wrapped), custom_func)
+
+    sig = inspect.signature(wrapped)
+    self.assertEqual(list(sig.parameters.keys()), ["x"])
+    self.assertEqual(sig.return_annotation, int)
+
+    nested = tool_runner.ToolWithSchema(wrapped, {"type": "nested"})
+    self.assertIs(inspect.unwrap(nested), custom_func)
+    self.assertEqual(inspect.signature(nested), sig)
 
   def test_coerce_args_basic_types(self):
     """Verifies that _coerce_args converts strings to basic Python types."""
