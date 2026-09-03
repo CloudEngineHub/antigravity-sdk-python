@@ -401,6 +401,89 @@ class StructConverterTest(absltest.TestCase):
     fallback = struct_converter.to_json_fallback(custom_obj)
     self.assertEqual(fallback, "custom_str_repr")
 
+  def test_unwrap_wire_struct_and_wire_value(self):
+    # Test flat wire struct with various value types
+    wire_dict = {
+        "fields": [
+            {"name": "str_key", "value": {"string_value": "hello"}},
+            {"name": "num_key", "value": {"number_value": 42.0}},
+            {"name": "bool_key", "value": {"bool_value": True}},
+            {"name": "null_key", "value": {"null_value": "NULL_VALUE"}},
+            {
+                "name": "nested_struct",
+                "value": {
+                    "struct_value": {
+                        "fields": [
+                            {
+                                "name": "inner_k",
+                                "value": {"stringValue": "nested"},
+                            },
+                            {
+                                "name": "inner_num",
+                                "value": {"numberValue": 10},
+                            },
+                            {
+                                "name": "inner_bool",
+                                "value": {"boolValue": False},
+                            },
+                            {
+                                "name": "inner_null",
+                                "value": {"nullValue": 0},
+                            },
+                        ]
+                    }
+                },
+            },
+            {
+                "name": "list_key",
+                "value": {
+                    "list_value": {
+                        "values": [
+                            {"string_value": "item1"},
+                            {"number_value": 2.0},
+                        ]
+                    }
+                },
+            },
+            {
+                "name": "content_key",
+                "value": {"content_value": {"text": {"text": "txt"}}},
+            },
+        ]
+    }
+    unpacked = struct_converter.unwrap_wire_struct(wire_dict)
+    self.assertEqual(
+        unpacked,
+        {
+            "str_key": "hello",
+            "num_key": 42.0,
+            "bool_key": True,
+            "null_key": None,
+            "nested_struct": {
+                "inner_k": "nested",
+                "inner_num": 10,
+                "inner_bool": False,
+                "inner_null": None,
+            },
+            "list_key": ["item1", 2.0],
+            "content_key": {"text": {"text": "txt"}},
+        },
+    )
+
+    # Test passthrough for already plain dict
+    plain = {"a": 1, "b": "c"}
+    self.assertEqual(struct_converter.unwrap_wire_struct(plain), plain)
+
+    # Test non-dict inputs
+    self.assertEqual(struct_converter.unwrap_wire_struct(None), {})
+    self.assertEqual(struct_converter.unwrap_wire_struct("string"), {})
+    self.assertEqual(struct_converter.unwrap_wire_struct([1, 2]), {})
+
+    # Test unwrap_wire_value non-dict passthrough
+    self.assertEqual(struct_converter.unwrap_wire_value("raw_string"), "raw_string")
+    self.assertEqual(struct_converter.unwrap_wire_value(123), 123)
+
 
 if __name__ == "__main__":
   absltest.main()
+

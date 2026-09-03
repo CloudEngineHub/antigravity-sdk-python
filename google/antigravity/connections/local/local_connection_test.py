@@ -42,6 +42,7 @@ from google.antigravity import types
 from google.antigravity.connections.local import event_processor
 from google.antigravity.connections.local import local_connection
 from google.antigravity.connections.local import local_connection_config
+from google.antigravity.connections.local import struct_converter
 from google.antigravity.connections.local import test_utils
 from google.antigravity.hooks import hook_runner
 from google.antigravity.hooks import hooks as hooks_base
@@ -688,6 +689,297 @@ class LocalConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(step.content_delta, "")
     self.assertEqual(step.thinking_delta, "")
 
+  def test_local_connection_step_from_dict_mcp_tool_arguments_dict(self):
+    """Tests that mcp_tool with arguments dict is correctly parsed."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "mcp_tool": {
+            "server_name": "my_server",
+            "tool_name": "my_tool",
+            "arguments": {"param1": "val1", "count": 42},
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].name, "my_tool")
+    self.assertEqual(step.tool_calls[0].server_name, "my_server")
+    self.assertEqual(step.tool_calls[0].args, {"param1": "val1", "count": 42})
+
+  def test_local_connection_step_from_dict_mcp_tool_args_dict(self):
+    """Tests that mcp_tool with args dict is correctly parsed."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "mcp_tool": {
+            "server_name": "my_server",
+            "tool_name": "my_tool",
+            "args": {"param1": "val1"},
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].name, "my_tool")
+    self.assertEqual(step.tool_calls[0].args, {"param1": "val1"})
+
+  def test_local_connection_step_from_dict_mcp_tool_arguments_json(self):
+    """Tests that mcp_tool with arguments_json string is correctly parsed."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "mcp_tool": {
+            "server_name": "my_server",
+            "tool_name": "my_tool",
+            "arguments_json": '{"param1": "val1"}',
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].name, "my_tool")
+    self.assertEqual(step.tool_calls[0].args, {"param1": "val1"})
+
+  def test_local_connection_step_from_dict_mcp_tool_invalid_json(self):
+    """Tests that mcp_tool with invalid arguments_json falls back to empty dict."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "mcp_tool": {
+            "server_name": "my_server",
+            "tool_name": "my_tool",
+            "arguments_json": "{invalid_json}",
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {})
+
+  def test_local_connection_step_from_dict_custom_tool_nested_arguments_dict(self):
+    """Tests that custom_tool.tool_call with arguments dict is correctly parsed."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "tool_call": {
+                "id": "tc_1",
+                "name": "search_docs",
+                "arguments": {"query": "test query"},
+            }
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].name, "search_docs")
+    self.assertEqual(step.tool_calls[0].id, "tc_1")
+    self.assertEqual(step.tool_calls[0].args, {"query": "test query"})
+
+  def test_local_connection_step_from_dict_custom_tool_nested_args_dict(self):
+    """Tests that custom_tool.tool_call with args dict is correctly parsed."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "tool_call": {
+                "id": "tc_1",
+                "name": "search_docs",
+                "args": {"query": "test query"},
+            }
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {"query": "test query"})
+
+  def test_local_connection_step_from_dict_custom_tool_nested_arguments_json(self):
+    """Tests that custom_tool.tool_call with arguments_json is correctly parsed."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "tool_call": {
+                "id": "tc_1",
+                "name": "search_docs",
+                "arguments_json": '{"query": "test query"}',
+            }
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {"query": "test query"})
+
+  def test_local_connection_step_from_dict_custom_tool_direct_dict(self):
+    """Tests that custom_tool directly containing tool call fields is correctly parsed."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "id": "tc_2",
+            "name": "run_analysis",
+            "arguments": {"mode": "deep"},
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].name, "run_analysis")
+    self.assertEqual(step.tool_calls[0].id, "tc_2")
+    self.assertEqual(step.tool_calls[0].args, {"mode": "deep"})
+
+  def test_local_connection_step_from_dict_custom_tool_invalid_json(self):
+    """Tests that custom_tool with invalid arguments_json falls back to empty dict."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "id": "tc_3",
+            "name": "broken_tool",
+            "arguments_json": "{not_valid_json}",
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {})
+
+  def test_local_connection_step_from_dict_custom_tool_arguments_precedence(
+      self,
+  ):
+    """Tests that structured arguments takes precedence over arguments_json."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "id": "tc_prec",
+            "name": "prec_tool",
+            "arguments": {"mode": "structured"},
+            "arguments_json": '{"mode": "stringified"}',
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {"mode": "structured"})
+
+  def test_local_connection_step_from_dict_mcp_tool_arguments_precedence(self):
+    """Tests that mcp_tool structured arguments takes precedence over arguments_json."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "mcp_tool": {
+            "server_name": "srv",
+            "tool_name": "prec_tool",
+            "arguments": {"mode": "structured"},
+            "arguments_json": '{"mode": "stringified"}',
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {"mode": "structured"})
+
+  def test_local_connection_step_from_dict_custom_tool_wire_struct(self):
+    """Tests that custom_tool with MessageToDict wire struct format is unpacked."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "tool_call": {
+                "id": "tc_wire",
+                "name": "query_tool",
+                "arguments": {
+                    "fields": [
+                        {
+                            "name": "query",
+                            "value": {"string_value": "SELECT 1"},
+                        },
+                        {
+                            "name": "limit",
+                            "value": {"number_value": 10.0},
+                        },
+                    ]
+                },
+            }
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].name, "query_tool")
+    self.assertEqual(
+        step.tool_calls[0].args, {"query": "SELECT 1", "limit": 10.0}
+    )
+
+  def test_local_connection_step_from_dict_non_dict_json_number(self):
+    """Tests that numeric JSON in arguments_json falls back to empty dict."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "id": "tc_scalar",
+            "name": "scalar_tool",
+            "arguments_json": "123",
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {})
+
+  def test_local_connection_step_from_dict_non_dict_json_null(self):
+    """Tests that null JSON in arguments_json falls back to empty dict."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "id": "tc_scalar",
+            "name": "scalar_tool",
+            "arguments_json": "null",
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {})
+
+  def test_local_connection_step_from_dict_non_dict_json_string(self):
+    """Tests that string JSON in arguments_json falls back to empty dict."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "id": "tc_scalar",
+            "name": "scalar_tool",
+            "arguments_json": '"string"',
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {})
+
+  def test_local_connection_step_from_dict_non_dict_json_list(self):
+    """Tests that list JSON in arguments_json falls back to empty dict."""
+    step_dict = {
+        "step_index": 1,
+        "state": "STATE_DONE",
+        "source": "SOURCE_MODEL",
+        "custom_tool": {
+            "id": "tc_scalar",
+            "name": "scalar_tool",
+            "arguments_json": "[1, 2]",
+        },
+    }
+    step = local_connection.LocalConnectionStep.from_dict(step_dict)
+    self.assertEqual(len(step.tool_calls), 1)
+    self.assertEqual(step.tool_calls[0].args, {})
+
+
   async def test_turn_hook_deny(self):
     hr = hook_runner.HookRunner()
 
@@ -1199,7 +1491,6 @@ class LocalConnectionTest(unittest.IsolatedAsyncioTestCase):
 
     # Trigger connection event dispatch
     await conn._handle_tool_call(raw_tool_call)
-    await asyncio.sleep(0.1)
 
     self.assertFalse(conn._step_queue.empty())
     step_obj = await conn._step_queue.get()
@@ -1225,6 +1516,153 @@ class LocalConnectionTest(unittest.IsolatedAsyncioTestCase):
     }
 
     self.assertEqual(actual_properties, expected_properties)
+
+  async def test_handle_tool_call_with_proto_arguments_struct(self):
+    """Tests _handle_tool_call when tool_call has structured proto arguments."""
+    harness = self._make_harness()
+    conn = harness.conn
+
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_456",
+        name="execute_query",
+        arguments=struct_converter.dict_to_struct(
+            {"query": "SELECT 1", "limit": 10}
+        ),
+    )
+
+    await conn._handle_tool_call(raw_tool_call)
+
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_456")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(
+        step_obj.tool_calls[0].args, {"query": "SELECT 1", "limit": 10.0}
+    )
+
+  async def test_handle_tool_call_arguments_precedence_over_arguments_json(
+      self,
+  ):
+    """Tests that structured arguments takes precedence over arguments_json in handle_tool_call."""
+    harness = self._make_harness()
+    conn = harness.conn
+
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_prec",
+        name="prec_tool",
+        arguments=struct_converter.dict_to_struct({"mode": "structured"}),
+        arguments_json='{"mode": "stringified"}',
+    )
+
+    await conn._handle_tool_call(raw_tool_call)
+
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_prec")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].args, {"mode": "structured"})
+
+  async def test_handle_tool_call_invalid_json_fallback(self):
+    """Tests _handle_tool_call when arguments_json is invalid JSON."""
+    harness = self._make_harness()
+    conn = harness.conn
+
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_789",
+        name="bad_json_tool",
+        arguments_json="{invalid_json}",
+    )
+
+    await conn._handle_tool_call(raw_tool_call)
+
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_789")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].args, {})
+
+  async def test_handle_tool_call_non_dict_json_number(self):
+    """Tests _handle_tool_call when arguments_json is a numeric JSON scalar."""
+    harness = self._make_harness()
+    conn = harness.conn
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_scalar",
+        name="scalar_tool",
+        arguments_json="123",
+    )
+    await conn._handle_tool_call(raw_tool_call)
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_scalar")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].args, {})
+
+  async def test_handle_tool_call_non_dict_json_null(self):
+    """Tests _handle_tool_call when arguments_json is a null JSON scalar."""
+    harness = self._make_harness()
+    conn = harness.conn
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_scalar",
+        name="scalar_tool",
+        arguments_json="null",
+    )
+    await conn._handle_tool_call(raw_tool_call)
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_scalar")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].args, {})
+
+  async def test_handle_tool_call_non_dict_json_string(self):
+    """Tests _handle_tool_call when arguments_json is a string JSON scalar."""
+    harness = self._make_harness()
+    conn = harness.conn
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_scalar",
+        name="scalar_tool",
+        arguments_json='"string"',
+    )
+    await conn._handle_tool_call(raw_tool_call)
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_scalar")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].args, {})
+
+  async def test_handle_tool_call_non_dict_json_list(self):
+    """Tests _handle_tool_call when arguments_json is a list JSON."""
+    harness = self._make_harness()
+    conn = harness.conn
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_scalar",
+        name="scalar_tool",
+        arguments_json="[1, 2]",
+    )
+    await conn._handle_tool_call(raw_tool_call)
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_scalar")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].args, {})
+
+
+  async def test_handle_tool_call_empty_arguments_fallback(self):
+    """Tests _handle_tool_call when both arguments and arguments_json are empty."""
+    harness = self._make_harness()
+    conn = harness.conn
+
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_000",
+        name="no_args_tool",
+    )
+
+    await conn._handle_tool_call(raw_tool_call)
+
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+    self.assertEqual(step_obj.id, "call_000")
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].args, {})
 
   async def test_wait_for_idle_does_not_deadlock(self):
     """Verifies that wait_for_idle completes when the connection goes idle.

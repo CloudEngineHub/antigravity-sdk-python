@@ -195,6 +195,62 @@ def parse_usage_metadata(
   )
 
 
+def _extract_tool_args(
+    tool_input: dict[str, Any] | localharness_pb2.ToolCall,
+) -> dict[str, Any]:
+  """Extracts structured tool arguments from a tool dict or ToolCall proto.
+
+  Handles:
+  1. ToolCall protobuf message with 'arguments' (proto Struct) or 'arguments_json'.
+  2. Direct 'arguments' or 'args' dict (e.g. {'query': 'val'}).
+  3. Unpacked 'arguments' dict serialized from genai.Struct (e.g. {'fields': [...]})
+     via struct_converter.unwrap_wire_struct.
+  4. Proto Struct object (via struct_converter.to_json_fallback).
+  5. Stringified 'arguments_json' (valid JSON returning a dict).
+  Falls back to an empty dict if missing or not a dict.
+  """
+  if isinstance(tool_input, localharness_pb2.ToolCall):
+    if tool_input.HasField("arguments"):
+      unpacked = struct_converter.to_json_fallback(tool_input.arguments)
+      if isinstance(unpacked, dict):
+        return unpacked
+    if tool_input.arguments_json and tool_input.arguments_json.strip():
+      try:
+        parsed = json.loads(tool_input.arguments_json)
+        if isinstance(parsed, dict):
+          return parsed
+      except json.JSONDecodeError:
+        pass
+    return {}
+
+  if not isinstance(tool_input, dict):
+    return {}
+
+  raw_args = tool_input.get("arguments")
+  if raw_args is None:
+    raw_args = tool_input.get("args")
+
+  if raw_args is not None:
+    if isinstance(raw_args, dict):
+      return struct_converter.unwrap_wire_struct(raw_args)
+    unpacked = struct_converter.to_json_fallback(raw_args)
+    if isinstance(unpacked, dict):
+      return unpacked
+
+  arguments_json = tool_input.get("arguments_json")
+  if isinstance(arguments_json, str) and arguments_json.strip():
+    try:
+      parsed = json.loads(arguments_json)
+      if isinstance(parsed, dict):
+        return parsed
+    except json.JSONDecodeError:
+      pass
+
+  return {}
+
+
+
+
 class LocalConnectionStep(types.Step):
   """Connection-specific step for LocalConnection."""
 
@@ -238,25 +294,20 @@ class LocalConnectionStep(types.Step):
     if not active_tool_name and _MCP_TOOL_PROTO_FIELD in step_dict:
       mcp_dict = step_dict[_MCP_TOOL_PROTO_FIELD]
       if isinstance(mcp_dict, dict):
-        server_name = mcp_dict.get("server_name", "")
-        tool_name = mcp_dict.get("tool_name", "")
-        active_tool_name = tool_name
-        active_server_name = server_name
-        arguments_json = mcp_dict.get("arguments_json") or "{}"
-        active_tool_args = json.loads(arguments_json)
+        active_server_name = mcp_dict.get("server_name", "")
+        active_tool_name = mcp_dict.get("tool_name", "")
+        active_tool_args = _extract_tool_args(mcp_dict)
 
     if not active_tool_name and "custom_tool" in step_dict:
       ct_dict = step_dict["custom_tool"]
-      if isinstance(ct_dict, dict) and "tool_call" in ct_dict:
-        tc_dict = ct_dict["tool_call"]
+      if isinstance(ct_dict, dict):
+        tc_dict = (
+            ct_dict.get("tool_call") if "tool_call" in ct_dict else ct_dict
+        )
         if isinstance(tc_dict, dict):
           active_tool_name = tc_dict.get("name", "")
           active_tool_id = tc_dict.get("id")
-          arguments_json = tc_dict.get("arguments_json") or "{}"
-          try:
-            active_tool_args = json.loads(arguments_json)
-          except json.JSONDecodeError:
-            active_tool_args = {}
+          active_tool_args = _extract_tool_args(tc_dict)
 
     if active_tool_name:
       canonical_path = None
@@ -738,9 +789,9 @@ class LocalHarnessEventProcessor:
   ) -> None:
     """Handles tool execution and hook interception."""
     try:
-      args = json.loads(tool_call.arguments_json or "{}")
-
+      args = _extract_tool_args(tool_call)
       tc = types.ToolCall(id=tool_call.id, name=tool_call.name, args=args)
+
 
       tool_call_step = LocalConnectionStep(
           id=tool_call.id,

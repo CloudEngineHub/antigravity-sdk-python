@@ -330,3 +330,58 @@ def to_json_fallback(obj: Any) -> Any:
     return obj
 
   return str(obj)
+
+
+def unwrap_wire_value(val: Any) -> Any:
+  """Recursively unwraps MessageToDict-serialized genai.Value dict into native Python values.
+
+  `genai.Struct` and `genai.Value` from interactions content.proto use fields
+  like `fields = 1`, `string_value = 1`, `struct_value = 5`, etc.
+  When serialized with `json_format.MessageToDict`, values appear as
+  `{"string_value": "..."}` or `{"stringValue": "..."}`, etc. This helper
+  recursively extracts the inner native Python values.
+  """
+  if not isinstance(val, dict):
+    return val
+  for key in ("string_value", "stringValue"):
+    if key in val:
+      return val[key]
+  for key in ("number_value", "numberValue"):
+    if key in val:
+      return val[key]
+  for key in ("bool_value", "boolValue"):
+    if key in val:
+      return val[key]
+  for key in ("null_value", "nullValue"):
+    if key in val:
+      return None
+  for key in ("struct_value", "structValue"):
+    if key in val and isinstance(val[key], dict):
+      return unwrap_wire_struct(val[key])
+  for key in ("list_value", "listValue"):
+    if key in val and isinstance(val[key], dict):
+      values = val[key].get("values", [])
+      if isinstance(values, list):
+        return [unwrap_wire_value(v) for v in values]
+  for key in ("content_value", "contentValue"):
+    if key in val:
+      return val[key]
+  return val
+
+
+def unwrap_wire_struct(val: Any) -> dict[str, Any]:
+  """Unpacks a MessageToDict-serialized genai.Struct dict ({'fields': [...]}) into a Python dict.
+
+  If val is already a plain dict without a 'fields' list, it is returned as is.
+  If val is not a dict, an empty dict is returned.
+  """
+  if not isinstance(val, dict):
+    return {}
+  if "fields" in val and isinstance(val["fields"], list):
+    unpacked = {}
+    for item in val["fields"]:
+      if isinstance(item, dict) and "name" in item:
+        unpacked[item["name"]] = unwrap_wire_value(item.get("value"))
+    return unpacked
+  return val
+
