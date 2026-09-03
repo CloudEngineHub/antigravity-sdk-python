@@ -796,6 +796,7 @@ class LocalHarnessEventProcessor:
       tool_call_step = LocalConnectionStep(
           id=tool_call.id,
           step_index=1,
+          trajectory_id=tool_call.trajectory_id,
           type=types.StepType.TOOL_CALL,
           source=types.StepSource.MODEL,
           target=types.StepTarget.ENVIRONMENT,

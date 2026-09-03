@@ -1664,6 +1664,33 @@ class LocalConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(len(step_obj.tool_calls), 1)
     self.assertEqual(step_obj.tool_calls[0].args, {})
 
+  async def test_handle_tool_call_populates_trajectory_id(self):
+    """Verifies that _handle_tool_call populates trajectory_id on LocalConnectionStep."""
+    harness = self._make_harness()
+    conn = harness.conn
+
+    raw_tool_call = localharness_pb2.ToolCall(
+        id="call_abc",
+        name="run_command",
+        arguments_json='{"command": "ls"}',
+        trajectory_id="traj_sub_123",
+    )
+
+    await conn._handle_tool_call(raw_tool_call)
+    await asyncio.sleep(0.1)
+
+    self.assertFalse(conn._step_queue.empty())
+    step_obj = await conn._step_queue.get()
+
+    self.assertEqual(step_obj.id, "call_abc")
+    self.assertEqual(step_obj.trajectory_id, "traj_sub_123")
+    self.assertEqual(step_obj.step_index, 1)
+    self.assertEqual(step_obj.type, types.StepType.TOOL_CALL)
+    self.assertEqual(len(step_obj.tool_calls), 1)
+    self.assertEqual(step_obj.tool_calls[0].id, "call_abc")
+    self.assertEqual(step_obj.tool_calls[0].name, "run_command")
+    self.assertEqual(step_obj.tool_calls[0].args, {"command": "ls"})
+
   async def test_wait_for_idle_does_not_deadlock(self):
     """Verifies that wait_for_idle completes when the connection goes idle.
 
