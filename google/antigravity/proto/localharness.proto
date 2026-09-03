@@ -539,6 +539,7 @@ message ToolCall {
   string name = 2;
   string arguments_json = 3;
   .genai.Struct arguments = 4;
+  string trajectory_id = 6;
   extensions 1000 to 1999;
   extensions 2000 to max;
 }
