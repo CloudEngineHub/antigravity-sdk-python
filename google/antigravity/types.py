@@ -61,6 +61,8 @@ __all__ = [
     "BuiltinTools",
     "RunCommandConfig",
     "CapabilitiesConfig",
+    "CompactionConfig",
+    "ToolOutputTruncationConfig",
     "ModelAPIRetryConfig",
     "ModelOutputRetryConfig",
     "RetryConfig",
@@ -174,6 +176,28 @@ class AgentBehavior(str, enum.Enum):
   AUTONOMOUS = "autonomous"
   INTERACTIVE = "interactive"
   MINIMAL = "minimal"
+
+
+_MAX_INT32 = 2**31 - 1  # Maximum value for protobuf int32 wire fields
+_MAX_UINT32 = 2**32 - 1  # Maximum value for protobuf uint32 wire fields
+_MAX_INT64 = 2**63 - 1  # Maximum value for protobuf int64 wire fields
+
+
+class ToolOutputTruncationConfig(pydantic.BaseModel):
+  """Configuration for truncating large tool outputs.
+
+  When a tool's output exceeds `max_tokens`, the harness preserves the beginning
+  (prefix) of the output up to the limit and truncates the remainder (tail),
+  appending a notice informing the model that the output was truncated.
+
+  Attributes:
+    max_tokens: Maximum number of estimated tokens for a single tool response.
+      Must be non-negative. Preserves the beginning (prefix) of the tool
+      response and truncates the end (tail). Setting to 0 explicitly disables
+      truncation.
+  """
+
+  max_tokens: int = pydantic.Field(ge=0, le=_MAX_INT32)
 
 
 class RunCommandConfig(pydantic.BaseModel):
@@ -462,6 +486,8 @@ class CapabilitiesConfig(pydantic.BaseModel):
     allowed_subagents: Explicit allowlist of subagent names the root agent may
       directly invoke. When None, all registered subagents are discoverable.
     run_command_config: Optional configuration for the builtin run_command tool.
+    tool_output_truncation_config: Optional configuration or token limit for
+      truncating large tool outputs (preserves beginning, truncates end).
   """
 
   enable_subagents: bool = True
@@ -481,6 +507,25 @@ class CapabilitiesConfig(pydantic.BaseModel):
   max_subagent_depth: int | None = pydantic.Field(default=None, ge=1)
   allowed_subagents: list[str] | None = None
   run_command_config: RunCommandConfig | None = None
+  tool_output_truncation_config: ToolOutputTruncationConfig | None = None
+
+  @pydantic.field_validator("tool_output_truncation_config", mode="before")
+  @classmethod
+  def _validate_tool_output_truncation_config(
+      cls, v: Any
+  ) -> ToolOutputTruncationConfig | None:
+    if v is None:
+      return None
+    if isinstance(v, int) and not isinstance(v, bool):
+      return ToolOutputTruncationConfig(max_tokens=v)
+    if isinstance(v, ToolOutputTruncationConfig):
+      return v
+    if isinstance(v, dict):
+      return ToolOutputTruncationConfig.model_validate(v)
+    raise TypeError(
+        "tool_output_truncation_config must be an int or"
+        f" ToolOutputTruncationConfig, got {type(v).__name__}"
+    )
 
   @pydantic.model_validator(mode="after")
   def _check_mutually_exclusive(self) -> "CapabilitiesConfig":
@@ -615,11 +660,6 @@ class CompactionConfig(pydantic.BaseModel):
           f" max_context_tokens ({self.max_context_tokens})"
       )
     return self
-
-
-_MAX_INT32 = 2**31 - 1  # Maximum value for protobuf int32 wire fields
-_MAX_UINT32 = 2**32 - 1  # Maximum value for protobuf uint32 wire fields
-_MAX_INT64 = 2**63 - 1  # Maximum value for protobuf int64 wire fields
 
 
 class ModelAPIRetryConfig(pydantic.BaseModel):

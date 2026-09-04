@@ -45,6 +45,7 @@ from google.antigravity.types import SystemInstructionSection
 from google.antigravity.types import TemplatedSystemInstructions
 from google.antigravity.types import ThinkingLevel
 from google.antigravity.types import ToolExecutionError
+from google.antigravity.types import ToolOutputTruncationConfig
 from google.antigravity.types import UsageMetadata
 from google.antigravity.types import VertexEndpoint
 from google.antigravity.types import Video
@@ -78,6 +79,7 @@ __all__ = [
     "SystemInstructionSection",
     "TemplatedSystemInstructions",
     "ThinkingLevel",
+    "ToolOutputTruncationConfig",
     "UsageMetadata",
     "VertexEndpoint",
     "Video",

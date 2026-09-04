@@ -205,6 +205,17 @@ def build_budget_config_proto(
   return localharness_pb2.BudgetConfig(**data)
 
 
+def build_tool_output_truncation_proto(
+    config: types.ToolOutputTruncationConfig | None,
+) -> localharness_pb2.ToolOutputTruncation | None:
+  """Builds a ToolOutputTruncation proto from a ToolOutputTruncationConfig model."""
+  if config is None:
+    return None
+  proto = localharness_pb2.ToolOutputTruncation()
+  proto.truncate.max_tokens = config.max_tokens
+  return proto
+
+
 def build_models_proto(
     models: list[types.ModelTarget],
 ) -> list[localharness_pb2.ModelConfig]:
@@ -1217,6 +1228,12 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       budget_proto = build_budget_config_proto(self._budget_config)
       if budget_proto:
         harness_config.budget_config.CopyFrom(budget_proto)
+
+    truncation_config = self._capabilities_config.tool_output_truncation_config
+    if truncation_config is not None:
+      trunc_proto = build_tool_output_truncation_proto(truncation_config)
+      if trunc_proto is not None:
+        harness_config.tool_output_truncation.CopyFrom(trunc_proto)
 
     if self._policies:
       policy_config, self._dynamic_policy_map = policy._to_policy_config_proto(

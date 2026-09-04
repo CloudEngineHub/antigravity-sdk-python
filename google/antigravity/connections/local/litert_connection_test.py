@@ -364,6 +364,35 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     )
     self.assertEqual(strategy._max_context_tokens, 12345)
 
+  @mock.patch("os.path.exists")
+  def test_litert_config_tool_output_truncation_config(self, mock_exists):
+    """Verify LiteRTAgentConfig forwards capabilities with tool_output_truncation_config to strategy and populates harness."""
+    mock_exists.return_value = True
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+        capabilities=types.CapabilitiesConfig(
+            tool_output_truncation_config=1024
+        ),
+    )
+    self.assertEqual(
+        config.capabilities.tool_output_truncation_config,
+        types.ToolOutputTruncationConfig(max_tokens=1024),
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    self.assertEqual(
+        strategy._capabilities_config.tool_output_truncation_config,
+        types.ToolOutputTruncationConfig(max_tokens=1024),
+    )
+    strategy._openai_server_url = "http://127.0.0.1:54321"
+    h_cfg = strategy._build_harness_config()
+    self.assertTrue(h_cfg.HasField("tool_output_truncation"))
+    self.assertTrue(h_cfg.tool_output_truncation.HasField("truncate"))
+    self.assertEqual(h_cfg.tool_output_truncation.truncate.max_tokens, 1024)
+
   def test_litert_config_default_capabilities(self):
     """Verify LiteRTAgentConfig defaults to all capabilities enabled."""
     litert_config = litert_connection_config.LiteRTAgentConfig(

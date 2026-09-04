@@ -947,6 +947,62 @@ class CapabilitiesConfigTest(unittest.TestCase):
         )
     )
 
+  def test_tool_output_truncation_config_default(self):
+    """Verifies default tool_output_truncation_config is None."""
+    config = types.CapabilitiesConfig()
+    self.assertIsNone(config.tool_output_truncation_config)
+
+  def test_tool_output_truncation_config_int_shorthand(self):
+    """Verifies int shorthand is coerced to ToolOutputTruncationConfig."""
+    config = types.CapabilitiesConfig(tool_output_truncation_config=2048)
+    self.assertEqual(
+        config.tool_output_truncation_config,
+        types.ToolOutputTruncationConfig(max_tokens=2048),
+    )
+
+  def test_tool_output_truncation_config_zero(self):
+    """Verifies 0 max_tokens is permitted to disable truncation."""
+    config = types.CapabilitiesConfig(tool_output_truncation_config=0)
+    self.assertEqual(
+        config.tool_output_truncation_config,
+        types.ToolOutputTruncationConfig(max_tokens=0),
+    )
+
+  def test_tool_output_truncation_config_instance(self):
+    """Verifies passing ToolOutputTruncationConfig instance."""
+    instance = types.ToolOutputTruncationConfig(max_tokens=1024)
+    config = types.CapabilitiesConfig(tool_output_truncation_config=instance)
+    self.assertIs(config.tool_output_truncation_config, instance)
+
+  def test_tool_output_truncation_config_dict(self):
+    """Verifies passing dict representation."""
+    config = types.CapabilitiesConfig(
+        tool_output_truncation_config={"max_tokens": 512}
+    )
+    self.assertEqual(
+        config.tool_output_truncation_config,
+        types.ToolOutputTruncationConfig(max_tokens=512),
+    )
+
+  def test_tool_output_truncation_config_boolean_rejected(self):
+    """Verifies boolean is rejected."""
+    with self.assertRaises(TypeError):
+      types.CapabilitiesConfig(tool_output_truncation_config=True)
+    with self.assertRaises(TypeError):
+      types.CapabilitiesConfig(tool_output_truncation_config=False)
+
+  def test_tool_output_truncation_config_invalid_types_rejected(self):
+    """Verifies non-int non-dict invalid types raise TypeError."""
+    with self.assertRaises(TypeError):
+      types.CapabilitiesConfig(tool_output_truncation_config="unlimited")
+
+  def test_tool_output_truncation_config_negative_or_overflow_raises(self):
+    """Verifies negative or overflowing int values raise ValidationError."""
+    with self.assertRaises(pydantic.ValidationError):
+      types.CapabilitiesConfig(tool_output_truncation_config=-1)
+    with self.assertRaises(pydantic.ValidationError):
+      types.CapabilitiesConfig(tool_output_truncation_config=2**31)
+
 
 class CompactionConfigTest(unittest.TestCase):
   """Validates the CompactionConfig Pydantic model."""
@@ -1033,6 +1089,30 @@ class CompactionConfigTest(unittest.TestCase):
       types.CompactionConfig(max_context_tokens=0)
     with self.assertRaises(pydantic.ValidationError):
       types.CompactionConfig(max_context_tokens=-1)
+
+
+class ToolOutputTruncationConfigTest(unittest.TestCase):
+  """Validates the ToolOutputTruncationConfig Pydantic model."""
+
+  def test_defaults(self):
+    """Verifies default values for ToolOutputTruncationConfig."""
+    cfg = types.ToolOutputTruncationConfig(max_tokens=2048)
+    self.assertEqual(cfg.max_tokens, 2048)
+
+  def test_zero_max_tokens_allowed(self):
+    """Verifies max_tokens=0 is permitted to explicitly disable truncation."""
+    cfg = types.ToolOutputTruncationConfig(max_tokens=0)
+    self.assertEqual(cfg.max_tokens, 0)
+
+  def test_negative_max_tokens_raises(self):
+    """Verifies validation error when max_tokens is negative."""
+    with self.assertRaises(pydantic.ValidationError):
+      types.ToolOutputTruncationConfig(max_tokens=-1)
+
+  def test_overflow_max_tokens_raises(self):
+    """Verifies validation error when max_tokens exceeds int32."""
+    with self.assertRaises(pydantic.ValidationError):
+      types.ToolOutputTruncationConfig(max_tokens=2**31)
 
 
 class AntigravityConnectionErrorTest(unittest.TestCase):

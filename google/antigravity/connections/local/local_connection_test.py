@@ -3074,6 +3074,101 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
         local_connection.build_budget_config_proto(types.BudgetConfig())
     )
 
+  def test_tool_output_truncation_proto(self):
+    """Verifies that tool_output_truncation_config translates to proto correctly."""
+    strategy_none = self._make_strategy(
+        capabilities_config=types.CapabilitiesConfig(
+            tool_output_truncation_config=None
+        )
+    )
+    config_none = strategy_none._build_harness_config()
+    self.assertFalse(config_none.HasField("tool_output_truncation"))
+
+    # Integer shorthand defaults to truncate strategy
+    strategy_int = self._make_strategy(
+        capabilities_config=types.CapabilitiesConfig(
+            tool_output_truncation_config=2048
+        )
+    )
+    config_int = strategy_int._build_harness_config()
+    self.assertTrue(config_int.HasField("tool_output_truncation"))
+    self.assertTrue(config_int.tool_output_truncation.HasField("truncate"))
+    self.assertEqual(
+        config_int.tool_output_truncation.truncate.max_tokens, 2048
+    )
+
+    # Integer shorthand 0 (explicitly disables truncation)
+    strategy_zero = self._make_strategy(
+        capabilities_config=types.CapabilitiesConfig(
+            tool_output_truncation_config=0
+        )
+    )
+    config_zero = strategy_zero._build_harness_config()
+    self.assertTrue(config_zero.HasField("tool_output_truncation"))
+    self.assertTrue(config_zero.tool_output_truncation.HasField("truncate"))
+    self.assertEqual(config_zero.tool_output_truncation.truncate.max_tokens, 0)
+
+    # Explicit ToolOutputTruncationConfig
+    trunc_cfg = types.ToolOutputTruncationConfig(max_tokens=1500)
+    strategy_trunc = self._make_strategy(
+        capabilities_config=types.CapabilitiesConfig(
+            tool_output_truncation_config=trunc_cfg
+        )
+    )
+    config_trunc = strategy_trunc._build_harness_config()
+    self.assertTrue(config_trunc.HasField("tool_output_truncation"))
+    self.assertTrue(config_trunc.tool_output_truncation.HasField("truncate"))
+    self.assertEqual(
+        config_trunc.tool_output_truncation.truncate.max_tokens, 1500
+    )
+
+    # Explicit ToolOutputTruncationConfig with 0
+    trunc_zero_cfg = types.ToolOutputTruncationConfig(max_tokens=0)
+    strategy_trunc_zero = self._make_strategy(
+        capabilities_config=types.CapabilitiesConfig(
+            tool_output_truncation_config=trunc_zero_cfg
+        )
+    )
+    config_trunc_zero = strategy_trunc_zero._build_harness_config()
+    self.assertTrue(config_trunc_zero.HasField("tool_output_truncation"))
+    self.assertTrue(
+        config_trunc_zero.tool_output_truncation.HasField("truncate")
+    )
+    self.assertEqual(
+        config_trunc_zero.tool_output_truncation.truncate.max_tokens, 0
+    )
+
+    # Test direct helper
+    self.assertIsNone(local_connection.build_tool_output_truncation_proto(None))
+    proto_zero = local_connection.build_tool_output_truncation_proto(
+        types.ToolOutputTruncationConfig(max_tokens=0)
+    )
+    self.assertIsNotNone(proto_zero)
+    self.assertEqual(proto_zero.truncate.max_tokens, 0)
+
+  def test_local_agent_config_tool_output_truncation(self):
+    """Verifies that LocalAgentConfig passes tool_output_truncation_config in capabilities to strategy."""
+    agent_cfg = local_connection_config.LocalAgentConfig(
+        capabilities=types.CapabilitiesConfig(
+            tool_output_truncation_config=1024
+        )
+    )
+    self.assertEqual(
+        agent_cfg.capabilities.tool_output_truncation_config,
+        types.ToolOutputTruncationConfig(max_tokens=1024),
+    )
+    strategy = agent_cfg.create_strategy(tool_runner=None, hook_runner=None)
+    self.assertIsInstance(strategy, local_connection.LocalConnectionStrategy)
+    self.assertEqual(
+        strategy._capabilities_config.tool_output_truncation_config,
+        types.ToolOutputTruncationConfig(max_tokens=1024),
+    )
+    harness_cfg = strategy._build_harness_config()
+    self.assertTrue(harness_cfg.HasField("tool_output_truncation"))
+    self.assertEqual(
+        harness_cfg.tool_output_truncation.truncate.max_tokens, 1024
+    )
+
   def test_retry_config_api_retry_only(self):
     """Verifies translation when only api_retry is configured."""
     retry_cfg = types.RetryConfig(
