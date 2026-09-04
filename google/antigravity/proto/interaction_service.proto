@@ -15,3 +15,15 @@
 edition = "2024";
 
 package genai;
+
+import "google/antigravity/proto/events.proto";
+import "google/antigravity/proto/interaction.proto";
+
+service InteractionService {
+  rpc CreateInteractionBidiStream(stream.genai.ClientEventBatch)
+      returns (stream.genai.ServerEventBatch);
+  rpc CreateInteractionStream(.genai.CreateInteractionEvent)
+      returns (stream.genai.ServerEventBatch);
+  rpc CreateInteraction(.genai.CreateInteractionEvent)
+      returns (.genai.Interaction);
+}
