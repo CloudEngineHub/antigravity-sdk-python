@@ -2313,6 +2313,149 @@ class UsageMetadataTest(unittest.TestCase):
     u = types.UsageMetadata(prompt_token_count=10)
     self.assertEqual(u.__sub__(1), NotImplemented)
 
+  def test_radd_operator(self):
+    """Verifies that __radd__ and 0 identity work as expected."""
+    u1 = types.UsageMetadata(
+        prompt_token_count=100,
+        cached_content_token_count=50,
+        candidates_token_count=30,
+        thoughts_token_count=20,
+        total_token_count=150,
+        service_tier=types.ServiceTier.PRIORITY,
+    )
+    u2 = types.UsageMetadata(
+        prompt_token_count=200,
+        cached_content_token_count=10,
+        candidates_token_count=40,
+        thoughts_token_count=5,
+        total_token_count=245,
+        service_tier=types.ServiceTier.PRIORITY,
+    )
+
+    # 0 + u1 == u1 and u1 + 0 == u1 (copy independence)
+    res_l = 0 + u1
+    self.assertEqual(res_l, u1)
+    self.assertIsNot(res_l, u1)
+
+    res_r = u1 + 0
+    self.assertEqual(res_r, u1)
+    self.assertIsNot(res_r, u1)
+
+    # sum([u1, u2]) and single-element sum([u1])
+    res_sum = sum([u1, u2])
+    self.assertEqual(res_sum, u1 + u2)
+    self.assertIsNot(res_sum, u1)
+    self.assertIsNot(res_sum, u2)
+
+    res_single = sum([u1])
+    self.assertEqual(res_single, u1)
+    self.assertIsNot(res_single, u1)
+
+    # Direct __radd__ call between UsageMetadata instances
+    self.assertEqual(u2.__radd__(u1), u1 + u2)
+
+    # Invalid types: direct dunder returns NotImplemented
+    self.assertEqual(u1.__radd__("invalid"), NotImplemented)
+
+    # Operator expressions raise TypeError for both left and right
+    # invalid operands.
+    with self.assertRaises(TypeError):
+      _ = False + u1
+    with self.assertRaises(TypeError):
+      _ = u1 + False
+    with self.assertRaises(TypeError):
+      _ = True + u1
+    with self.assertRaises(TypeError):
+      _ = u1 + True
+    with self.assertRaises(TypeError):
+      _ = "invalid" + u1
+    with self.assertRaises(TypeError):
+      _ = u1 + "invalid"
+
+  def test_mul_operator(self):
+    """Verifies that scalar multiplication scales token counts correctly."""
+    u = types.UsageMetadata(
+        prompt_token_count=100,
+        cached_content_token_count=50,
+        candidates_token_count=31,
+        thoughts_token_count=21,
+        total_token_count=152,
+        service_tier=types.ServiceTier.PRIORITY,
+    )
+
+    # Integer scaling
+    u2 = u * 2
+    self.assertEqual(u2.prompt_token_count, 200)
+    self.assertEqual(u2.cached_content_token_count, 100)
+    self.assertEqual(u2.candidates_token_count, 62)
+    self.assertEqual(u2.thoughts_token_count, 42)
+    self.assertEqual(u2.total_token_count, 304)
+    self.assertEqual(u2.service_tier, types.ServiceTier.PRIORITY)
+
+    # Float scaling with explicit rounded integer values (round-half-to-even)
+    u_float = u * 1.5
+    self.assertEqual(u_float.prompt_token_count, 150)
+    self.assertEqual(u_float.cached_content_token_count, 75)
+    self.assertEqual(u_float.candidates_token_count, 46)
+    self.assertEqual(u_float.thoughts_token_count, 32)
+    self.assertEqual(u_float.total_token_count, 228)
+    self.assertEqual(u_float.service_tier, types.ServiceTier.PRIORITY)
+
+    # Zero scaling
+    u0 = u * 0
+    self.assertEqual(u0.prompt_token_count, 0)
+    self.assertEqual(u0.cached_content_token_count, 0)
+    self.assertEqual(u0.candidates_token_count, 0)
+    self.assertEqual(u0.thoughts_token_count, 0)
+    self.assertEqual(u0.total_token_count, 0)
+    self.assertEqual(u0.service_tier, types.ServiceTier.PRIORITY)
+
+    # None field preservation
+    u_none = types.UsageMetadata(prompt_token_count=100)
+    u_none_scaled = u_none * 2
+    self.assertEqual(u_none_scaled.prompt_token_count, 200)
+    self.assertIsNone(u_none_scaled.cached_content_token_count)
+    self.assertIsNone(u_none_scaled.candidates_token_count)
+    self.assertIsNone(u_none_scaled.thoughts_token_count)
+    self.assertIsNone(u_none_scaled.total_token_count)
+    self.assertIsNone(u_none_scaled.service_tier)
+
+    # Commutativity
+    self.assertEqual(3 * u, u * 3)
+
+    # Invalid types: direct dunder returns NotImplemented
+    self.assertEqual(u.__mul__("invalid"), NotImplemented)
+    self.assertEqual(u.__mul__(False), NotImplemented)
+    self.assertEqual(u.__mul__(True), NotImplemented)
+
+    # Operator expressions raise TypeError
+    with self.assertRaises(TypeError):
+      _ = u * False
+    with self.assertRaises(TypeError):
+      _ = False * u
+    with self.assertRaises(TypeError):
+      _ = u * True
+    with self.assertRaises(TypeError):
+      _ = True * u
+    with self.assertRaises(TypeError):
+      _ = u * "invalid"
+    with self.assertRaises(TypeError):
+      _ = "invalid" * u
+
+    # Invalid numbers: negative and non-finite raise ValueError
+    with self.assertRaises(ValueError):
+      _ = u * -1
+    with self.assertRaises(ValueError):
+      _ = -1 * u
+    with self.assertRaises(ValueError):
+      _ = u * float("nan")
+    with self.assertRaises(ValueError):
+      _ = float("nan") * u
+    with self.assertRaises(ValueError):
+      _ = u * float("inf")
+    with self.assertRaises(ValueError):
+      _ = float("inf") * u
+
 
 class RetryConfigTest(unittest.TestCase):
   """Tests for RetryConfig presets and explicit configuration."""

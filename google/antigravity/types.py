@@ -24,6 +24,7 @@ import asyncio
 from collections.abc import Sequence
 import enum
 import logging
+import math
 import mimetypes
 import pathlib
 from typing import Annotated, Any, AsyncIterator, Callable, ClassVar, Literal, TypeVar, cast
@@ -898,7 +899,14 @@ class UsageMetadata(pydantic.BaseModel):
   # Service tier.
   service_tier: ServiceTier | None = None
 
-  def __add__(self, other: UsageMetadata) -> UsageMetadata:
+  def __add__(self, other: Any) -> UsageMetadata:
+    """Adds token counts from another UsageMetadata or returns a copy for 0."""
+    if (
+        isinstance(other, (int, float))
+        and not isinstance(other, bool)
+        and other == 0
+    ):
+      return self.model_copy()
     if not isinstance(other, UsageMetadata):
       return NotImplemented
     if self.service_tier == other.service_tier:
@@ -908,7 +916,7 @@ class UsageMetadata(pydantic.BaseModel):
     else:
       # When combining different service tiers, default to STANDARD.
       merged_tier = ServiceTier.STANDARD
-    return UsageMetadata(
+    return self.__class__(
         prompt_token_count=(self.prompt_token_count or 0)
         + (other.prompt_token_count or 0),
         cached_content_token_count=(self.cached_content_token_count or 0)
@@ -922,10 +930,22 @@ class UsageMetadata(pydantic.BaseModel):
         service_tier=merged_tier,
     )
 
+  def __radd__(self, other: Any) -> UsageMetadata:
+    """Supports reflected addition for sum() accumulators and 0 identity."""
+    if (
+        isinstance(other, (int, float))
+        and not isinstance(other, bool)
+        and other == 0
+    ):
+      return self.model_copy()
+    if isinstance(other, UsageMetadata):
+      return self.__add__(other)
+    return NotImplemented
+
   def __sub__(self, other: UsageMetadata) -> UsageMetadata:
     if not isinstance(other, UsageMetadata):
       return NotImplemented
-    return UsageMetadata(
+    return self.__class__(
         prompt_token_count=(self.prompt_token_count or 0)
         - (other.prompt_token_count or 0),
         cached_content_token_count=(self.cached_content_token_count or 0)
@@ -938,6 +958,48 @@ class UsageMetadata(pydantic.BaseModel):
         - (other.total_token_count or 0),
         service_tier=self.service_tier or other.service_tier,
     )
+
+  def __mul__(self, factor: Any) -> UsageMetadata:
+    """Scales token counts by a non-negative, finite numeric factor."""
+    if isinstance(factor, bool) or not isinstance(factor, (int, float)):
+      return NotImplemented
+    if not math.isfinite(factor) or factor < 0:
+      raise ValueError(
+          "Multiplication factor must be a finite, non-negative number, got"
+          f" {factor}"
+      )
+    return self.__class__(
+        prompt_token_count=(
+            round(self.prompt_token_count * factor)
+            if self.prompt_token_count is not None
+            else None
+        ),
+        cached_content_token_count=(
+            round(self.cached_content_token_count * factor)
+            if self.cached_content_token_count is not None
+            else None
+        ),
+        candidates_token_count=(
+            round(self.candidates_token_count * factor)
+            if self.candidates_token_count is not None
+            else None
+        ),
+        thoughts_token_count=(
+            round(self.thoughts_token_count * factor)
+            if self.thoughts_token_count is not None
+            else None
+        ),
+        total_token_count=(
+            round(self.total_token_count * factor)
+            if self.total_token_count is not None
+            else None
+        ),
+        service_tier=self.service_tier,
+    )
+
+  def __rmul__(self, factor: Any) -> UsageMetadata:
+    """Reflected scalar multiplication delegating to __mul__."""
+    return self.__mul__(factor)
 
 
 class StepType(str, enum.Enum):
