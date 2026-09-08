@@ -234,13 +234,16 @@ class AgentConfig(abc.ABC, pydantic.BaseModel):
             tools.append(tool)
     return tools
 
+  def _default_compaction_config(self) -> types.CompactionConfig | None:
+    """Returns the default compaction configuration for lightweight preset."""
+    return types.CompactionConfig(max_context_tokens=65536)
+
   def lightweight(self: Self) -> Self:
     """Returns a copy of this configuration with lightweight presets applied."""
     preset_kwargs = {
         "enabled_tools": types.BuiltinTools.minimal(),
         "agent_behavior": types.AgentBehavior.MINIMAL,
         "enable_subagents": False,
-        "compaction_threshold": 65536,
     }
     if (
         "capabilities" in self.model_fields_set
@@ -255,9 +258,25 @@ class AgentConfig(abc.ABC, pydantic.BaseModel):
         user_caps.pop("disabled_tools", None)
       preset_kwargs.update(user_caps)
     new_capabilities = types.CapabilitiesConfig(**preset_kwargs)
-    return cast(
-        Self, self.model_copy(update={"capabilities": new_capabilities})
+    updates: dict[str, Any] = {"capabilities": new_capabilities}
+    # Compaction preset is only applied if the caller has not explicitly
+    # configured a compaction policy:
+    # 1. Modern API: caller explicitly passed a non-None `compaction_config`
+    #    (tracked via `model_fields_set` to distinguish explicit values).
+    # 2. Legacy API: caller explicitly configured compaction threshold via
+    #    `capabilities.compaction_threshold`.
+    has_explicit_compaction = (
+        "compaction_config" in self.model_fields_set
+        and self.compaction_config is not None
+    ) or (
+        self.capabilities is not None
+        and self.capabilities.compaction_threshold is not None
     )
+    if not has_explicit_compaction:
+      default_compaction = self._default_compaction_config()
+      if default_compaction is not None:
+        updates["compaction_config"] = default_compaction
+    return cast(Self, self.model_copy(update=updates))
 
   @abc.abstractmethod
   def create_strategy(

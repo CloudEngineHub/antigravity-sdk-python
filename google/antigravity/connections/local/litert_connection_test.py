@@ -355,14 +355,21 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     config = litert_connection_config.LiteRTAgentConfig(
         model_path="/tmp/model.litertlm",
         backend=litert_connection_config.LiteRTBackend.CPU,
-        compaction_config=types.CompactionConfig(max_context_tokens=12345),
+        compaction_config=types.CompactionConfig(
+            max_context_tokens=12345, checkpoint_interval_tokens=12345
+        ),
     )
     self.assertEqual(config.compaction_config.max_context_tokens, 12345)
+    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 12345)
     strategy = config.create_strategy(
         tool_runner=mock.MagicMock(),
         hook_runner=mock.MagicMock(),
     )
-    self.assertEqual(strategy._max_context_tokens, 12345)
+    self.assertEqual(strategy._max_kv_cache_tokens, 65536)
+    self.assertEqual(strategy._compaction_config.max_context_tokens, 12345)
+    self.assertEqual(
+        strategy._compaction_config.checkpoint_interval_tokens, 12345
+    )
 
   @mock.patch("os.path.exists")
   def test_litert_config_tool_output_truncation_config(self, mock_exists):
@@ -416,8 +423,21 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
-    self.assertEqual(config.capabilities.compaction_threshold, 65536)
+    self.assertIsNotNone(config.compaction_config)
+    self.assertEqual(config.compaction_config.max_context_tokens, 40960)
+    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 40960)
+    self.assertIsNone(config.capabilities.compaction_threshold)
     self.assertFalse(config.capabilities.enable_subagents)
+
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    self.assertEqual(strategy._max_kv_cache_tokens, 65536)
+    self.assertEqual(strategy._compaction_config.max_context_tokens, 40960)
+    self.assertEqual(
+        strategy._compaction_config.checkpoint_interval_tokens, 40960
+    )
 
   def test_litert_config_lightweight_method_with_overrides(self):
     """Verify LiteRTAgentConfig.lightweight respects capability overrides."""
@@ -428,6 +448,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     ).lightweight()
     self.assertIsInstance(config, litert_connection_config.LiteRTAgentConfig)
     self.assertEqual(config.capabilities.compaction_threshold, 3000)
+    self.assertIsNone(config.compaction_config)
     self.assertEqual(
         config.capabilities.agent_behavior, types.AgentBehavior.MINIMAL
     )
@@ -435,6 +456,48 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
     self.assertFalse(config.capabilities.enable_subagents)
+
+  def test_litert_config_lightweight_method_preserves_explicit_compaction_config(
+      self,
+  ):
+    """Verify explicit compaction_config takes priority over lightweight preset."""
+    custom_compaction = types.CompactionConfig(
+        checkpoint_interval_tokens=10000,
+        max_context_tokens=20000,
+    )
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+        compaction_config=custom_compaction,
+    ).lightweight()
+    self.assertEqual(config.compaction_config, custom_compaction)
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    self.assertEqual(
+        strategy._compaction_config.checkpoint_interval_tokens, 10000
+    )
+    self.assertEqual(strategy._compaction_config.max_context_tokens, 20000)
+
+  def test_litert_config_kv_cache_tokens_defaults(self):
+    """Verify LiteRTAgentConfig defaults for KV cache tokens and derived compaction."""
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+    )
+    self.assertIsNone(config.compaction_config)
+
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    self.assertEqual(strategy._max_kv_cache_tokens, 65536)
+    self.assertEqual(strategy._max_output_tokens, 16384)
+    self.assertEqual(strategy._thinking_token_budget, 8192)
+    self.assertEqual(strategy._compaction_config.max_context_tokens, 40960)
+    self.assertEqual(
+        strategy._compaction_config.checkpoint_interval_tokens, 40960
+    )
 
   @mock.patch("os.path.exists")
   @mock.patch("subprocess.Popen")
@@ -629,11 +692,10 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         tool_runner=mock.MagicMock(),
         hook_runner=mock.MagicMock(),
     )
-    with mock.patch.object(
-        strategy, "_shutdown_server"
-    ) as mock_shutdown, mock.patch.object(
-        strategy, "_close_engine"
-    ) as mock_close:
+    with (
+        mock.patch.object(strategy, "_shutdown_server") as mock_shutdown,
+        mock.patch.object(strategy, "_close_engine") as mock_close,
+    ):
       with self.assertRaises(RuntimeError):
         await strategy.__aenter__()
       mock_shutdown.assert_called_once()
@@ -652,10 +714,13 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
       self.assertEqual(tool.get_tool_description(), {"name": "foo"})
 
   async def test_litert_engine_max_num_tokens_param(self):
-    """Verify max_num_tokens (not max_context_tokens) is passed to litert_lm.Engine."""
+    """Verify max_num_tokens is passed to litert_lm.Engine and decoupled from compaction."""
     config = litert_connection_config.LiteRTAgentConfig(
         model_path="/dummy/path.litertlm",
-        compaction_config=types.CompactionConfig(max_context_tokens=4096),
+        compaction_config=types.CompactionConfig(
+            max_context_tokens=21424,
+            checkpoint_interval_tokens=12854,
+        ),
     )
     strategy = config.create_strategy(
         tool_runner=mock.MagicMock(),
@@ -666,18 +731,20 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     mock_engine_cls.return_value = mock_engine_inst
     mock_engine_inst.__enter__.return_value = mock.MagicMock()
 
-    with mock.patch.object(
-        litert_connection, "litert_lm"
-    ) as mock_lm, mock.patch.object(
-        litert_connection.litert_server, "LiteRTOpenAIServer"
-    ), mock.patch.object(
-        litert_connection, "_urlopen_no_proxy"
-    ) as mock_urlopen, mock.patch(
-        "os.path.exists", return_value=True
-    ), mock.patch.object(
-        local_connection.LocalConnectionStrategy,
-        "__aenter__",
-        return_value=None,
+    with (
+        mock.patch.object(litert_connection, "litert_lm") as mock_lm,
+        mock.patch.object(
+            litert_connection.litert_server, "LiteRTOpenAIServer"
+        ),
+        mock.patch.object(
+            litert_connection, "_urlopen_no_proxy"
+        ) as mock_urlopen,
+        mock.patch("os.path.exists", return_value=True),
+        mock.patch.object(
+            local_connection.LocalConnectionStrategy,
+            "__aenter__",
+            return_value=None,
+        ),
     ):
       mock_resp = mock.MagicMock()
       mock_resp.status = 200
@@ -694,7 +761,60 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
       _, kwargs = mock_engine_cls.call_args
       self.assertIn("max_num_tokens", kwargs)
       self.assertNotIn("max_context_tokens", kwargs)
-      self.assertEqual(kwargs["max_num_tokens"], 4096)
+      self.assertEqual(kwargs["max_num_tokens"], 65536)
+      self.assertEqual(strategy._compaction_config.max_context_tokens, 21424)
+      self.assertEqual(
+          strategy._compaction_config.checkpoint_interval_tokens, 12854
+      )
+
+  async def test_litert_engine_lightweight_decoupled_limits(self):
+    """Verify lightweight preset passes max_kv_cache_tokens to Engine while deriving compaction."""
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/dummy/path.litertlm",
+    ).lightweight()
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    mock_engine_cls = mock.MagicMock()
+    mock_engine_inst = mock.MagicMock()
+    mock_engine_cls.return_value = mock_engine_inst
+    mock_engine_inst.__enter__.return_value = mock.MagicMock()
+
+    with (
+        mock.patch.object(litert_connection, "litert_lm") as mock_lm,
+        mock.patch.object(
+            litert_connection.litert_server, "LiteRTOpenAIServer"
+        ),
+        mock.patch.object(
+            litert_connection, "_urlopen_no_proxy"
+        ) as mock_urlopen,
+        mock.patch("os.path.exists", return_value=True),
+        mock.patch.object(
+            local_connection.LocalConnectionStrategy,
+            "__aenter__",
+            return_value=None,
+        ),
+    ):
+      mock_resp = mock.MagicMock()
+      mock_resp.status = 200
+      mock_resp.__enter__.return_value = mock_resp
+      mock_urlopen.return_value = mock_resp
+      mock_lm.Engine = mock_engine_cls
+      mock_lm.Backend.CPU.return_value = "CPU"
+      try:
+        await strategy.__aenter__()
+      finally:
+        await strategy.__aexit__(None, None, None)
+
+      mock_engine_cls.assert_called_once()
+      _, kwargs = mock_engine_cls.call_args
+      self.assertEqual(kwargs["max_num_tokens"], 65536)
+      self.assertEqual(strategy._max_kv_cache_tokens, 65536)
+      self.assertEqual(strategy._compaction_config.max_context_tokens, 40960)
+      self.assertEqual(
+          strategy._compaction_config.checkpoint_interval_tokens, 40960
+      )
 
   def test_litert_config_mcp_servers_and_subagents_passed_to_strategy(self):
     """Verify LiteRTAgentConfig passes mcp_servers and subagents to strategy."""
@@ -808,25 +928,25 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     fake_server_inst = mock.MagicMock()
     fake_server_inst.engine_lock = FakeLock()
 
-    with mock.patch.object(
-        litert_connection, "litert_lm"
-    ) as mock_lm, mock.patch.object(
-        litert_connection.litert_server,
-        "LiteRTOpenAIServer",
-        return_value=fake_server_inst,
-    ), mock.patch.object(
-        litert_connection, "_urlopen_no_proxy"
-    ) as mock_urlopen, mock.patch(
-        "os.path.exists", return_value=True
-    ), mock.patch(
-        "google.antigravity.connections.local.local_connection.LocalConnectionStrategy.__aenter__",
-        return_value=None,
+    with (
+        mock.patch.object(litert_connection, "litert_lm") as mock_lm,
+        mock.patch.object(
+            litert_connection.litert_server,
+            "LiteRTOpenAIServer",
+            return_value=fake_server_inst,
+        ),
+        mock.patch.object(
+            litert_connection, "_urlopen_no_proxy"
+        ) as mock_urlopen,
+        mock.patch("os.path.exists", return_value=True),
+        mock.patch(
+            "google.antigravity.connections.local.local_connection.LocalConnectionStrategy.__aenter__",
+            return_value=None,
+        ),
     ):
 
       def fake_urlopen(req, timeout=None):
-        url_str = str(
-            req.full_url if hasattr(req, "full_url") else str(req)
-        )
+        url_str = str(req.full_url if hasattr(req, "full_url") else str(req))
         if "chat/completions" in url_str:
           # Check scaled timeout: 65536 / 250 = 262.144
           self.assertAlmostEqual(timeout, 262.144, places=2)
@@ -888,6 +1008,8 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         litert_connection.litert_server.LiteRTOpenAIHandler,
         engine=mock.MagicMock(),
         model_name="test-model",
+        max_output_tokens=16384,
+        thinking_token_budget=8192,
     )
     try:
       with (
@@ -992,6 +1114,137 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
       with self.assertRaises(ValueError):
         litert_connection.litert_server.LiteRTOpenAIHandler.handle(handler)
       self.assertFalse(handler.close_connection)
+
+  def test_litert_server_custom_output_and_thinking_config(self):
+    """Verify LiteRTOpenAIServer stores limits and passes them to create_conversation."""
+    mock_engine = mock.MagicMock()
+    mock_conv = mock.MagicMock()
+    mock_engine.create_conversation.return_value.__enter__.return_value = (
+        mock_conv
+    )
+
+    server = litert_connection.litert_server.LiteRTOpenAIServer(
+        ("127.0.0.1", 0),
+        litert_connection.litert_server.LiteRTOpenAIHandler,
+        engine=mock_engine,
+        model_name="test-model",
+        max_output_tokens=4096,
+        thinking_token_budget=1024,
+    )
+    self.assertEqual(server.max_output_tokens, 4096)
+    self.assertEqual(server.thinking_token_budget, 1024)
+
+    handler = mock.MagicMock()
+    handler.server = server
+    handler.path = "/v1/chat/completions"
+    handler._stream_response = mock.MagicMock()
+    handler._handle_synchronous = mock.MagicMock()
+
+    with mock.patch.object(
+        litert_connection.litert_server, "litert_lm"
+    ) as mock_lm:
+      mock_lm.ThinkingConfig = mock.MagicMock(
+          return_value="mock_thinking_config"
+      )
+      mock_lm.ConstrainedDecodingConfig = mock.MagicMock(
+          return_value="mock_cdc"
+      )
+      mock_lm.Message.user = mock.MagicMock(return_value="mock_msg")
+      mock_lm.Contents.of = mock.MagicMock(return_value="mock_contents")
+
+      # 1. Request uses limits configured on server
+      payload = json.dumps(
+          {"messages": [{"role": "user", "content": "hi"}]}
+      ).encode("utf-8")
+      handler.headers = {"Content-Length": str(len(payload))}
+      handler.rfile.read.return_value = payload
+      litert_connection.litert_server.LiteRTOpenAIHandler.do_POST(handler)
+
+      mock_engine.create_conversation.assert_called_once()
+      _, kwargs = mock_engine.create_conversation.call_args
+      self.assertEqual(kwargs["max_output_tokens"], 4096)
+      mock_lm.ThinkingConfig.assert_called_with(thinking_token_budget=1024)
+      self.assertEqual(kwargs["thinking_config"], "mock_thinking_config")
+
+      # 2. Server with thinking disabled (None)
+      server.thinking_token_budget = None
+      mock_engine.create_conversation.reset_mock()
+      payload = json.dumps(
+          {"messages": [{"role": "user", "content": "hi"}]}
+      ).encode("utf-8")
+      handler.headers = {"Content-Length": str(len(payload))}
+      handler.rfile.read.return_value = payload
+      litert_connection.litert_server.LiteRTOpenAIHandler.do_POST(handler)
+
+      _, kwargs = mock_engine.create_conversation.call_args
+      self.assertEqual(kwargs["max_output_tokens"], 4096)
+      self.assertIsNone(kwargs["thinking_config"])
+
+
+class DeriveLiteRTCompactionConfigTest(unittest.TestCase):
+
+  def test_derive_default_tokens(self):
+    """Verify ceiling and interval derivation with standard defaults."""
+    config = litert_connection_config.derive_litert_compaction_config()
+    self.assertEqual(config.max_context_tokens, 40960)
+    self.assertEqual(config.checkpoint_interval_tokens, 40960)
+
+    config_explicit = litert_connection_config.derive_litert_compaction_config(
+        max_kv_cache_tokens=65536,
+    )
+    self.assertEqual(config_explicit.max_context_tokens, 40960)
+    self.assertEqual(config_explicit.checkpoint_interval_tokens, 40960)
+
+  def test_derive_custom_tokens(self):
+    """Verify ceiling and interval derivation with custom parameters."""
+    config = litert_connection_config.derive_litert_compaction_config(
+        max_kv_cache_tokens=32768,
+        max_output_tokens=8192,
+    )
+    self.assertEqual(config.max_context_tokens, 16384)
+    self.assertEqual(config.checkpoint_interval_tokens, 16384)
+
+  def test_derive_floor_clamp(self):
+    """Verify context ceiling is clamped to at least 1024 tokens."""
+    config = litert_connection_config.derive_litert_compaction_config(
+        max_kv_cache_tokens=10000,
+        max_output_tokens=5000,
+    )
+    self.assertEqual(config.max_context_tokens, 1024)
+    self.assertEqual(config.checkpoint_interval_tokens, 1024)
+
+    config = litert_connection_config.derive_litert_compaction_config(
+        max_kv_cache_tokens=2048,
+        max_output_tokens=2048,
+    )
+    self.assertEqual(config.max_context_tokens, 1024)
+    self.assertEqual(config.checkpoint_interval_tokens, 1024)
+
+  def test_derive_non_positive_kv_cache_tokens_raises(self):
+    """Verify ValueError is raised if max_kv_cache_tokens <= 0."""
+    with self.assertRaises(ValueError):
+      litert_connection_config.derive_litert_compaction_config(
+          max_kv_cache_tokens=0,
+          max_output_tokens=16384,
+      )
+    with self.assertRaises(ValueError):
+      litert_connection_config.derive_litert_compaction_config(
+          max_kv_cache_tokens=-1000,
+          max_output_tokens=16384,
+      )
+
+  def test_derive_non_positive_output_tokens_raises(self):
+    """Verify ValueError is raised if max_output_tokens <= 0."""
+    with self.assertRaises(ValueError):
+      litert_connection_config.derive_litert_compaction_config(
+          max_kv_cache_tokens=65536,
+          max_output_tokens=0,
+      )
+    with self.assertRaises(ValueError):
+      litert_connection_config.derive_litert_compaction_config(
+          max_kv_cache_tokens=65536,
+          max_output_tokens=-2000,
+      )
 
 
 if __name__ == "__main__":

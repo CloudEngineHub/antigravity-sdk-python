@@ -70,9 +70,13 @@ class LiteRTOpenAIServer(http.server.ThreadingHTTPServer):
       RequestHandlerClass: type[http.server.BaseHTTPRequestHandler],
       engine: Any,
       model_name: str,
+      max_output_tokens: int = 16384,
+      thinking_token_budget: int | None = 8192,
   ):
     self.engine = engine
     self.model_name = model_name
+    self.max_output_tokens = max_output_tokens
+    self.thinking_token_budget = thinking_token_budget
     self.engine_lock = threading.Lock()
     super().__init__(server_address, RequestHandlerClass)
 
@@ -283,6 +287,12 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
         ):
           litert_tools.append(OpenAITool(t))
 
+    thinking_config = None
+    if server.thinking_token_budget is not None:
+      thinking_config = litert_lm.ThinkingConfig(
+          thinking_token_budget=server.thinking_token_budget
+      )
+
     # Thread-safe serialization for non-thread-safe C++ engine model inferences
     with server.engine_lock:
       try:
@@ -290,10 +300,8 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
             messages=context_messages,
             tools=litert_tools or None,
             automatic_tool_calling=False,
-            max_output_tokens=16384,
-            thinking_config=litert_lm.ThinkingConfig(
-                thinking_token_budget=8192
-            ),
+            max_output_tokens=server.max_output_tokens,
+            thinking_config=thinking_config,
             constrained_decoding_config=litert_lm.ConstrainedDecodingConfig(),
         ) as conv:
           if stream:

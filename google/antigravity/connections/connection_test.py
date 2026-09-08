@@ -223,7 +223,25 @@ class AgentConfigTest(unittest.TestCase):
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
     self.assertFalse(config.capabilities.enable_subagents)
-    self.assertEqual(config.capabilities.compaction_threshold, 65536)
+    self.assertIsNotNone(config.compaction_config)
+    self.assertEqual(config.compaction_config.max_context_tokens, 65536)
+    self.assertIsNone(config.compaction_config.checkpoint_interval_tokens)
+
+  def test_lightweight_method_preserves_explicit_compaction_config(self):
+    class ConcreteConfig(connection.AgentConfig):
+
+      def create_strategy(self, *, tool_runner, hook_runner):
+        return None
+
+    user_compaction = types.CompactionConfig(
+        checkpoint_interval_tokens=12345,
+        max_context_tokens=23456,
+    )
+    config = ConcreteConfig(
+        compaction_config=user_compaction,
+    ).lightweight()
+    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 12345)
+    self.assertEqual(config.compaction_config.max_context_tokens, 23456)
 
   def test_lightweight_method_merges_with_custom_capabilities(self):
     class ConcreteConfig(connection.AgentConfig):
@@ -295,7 +313,6 @@ class AgentConfigTest(unittest.TestCase):
     self.assertEqual(
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
-    self.assertEqual(config.capabilities.compaction_threshold, 65536)
 
   def test_lightweight_method_filters_disabled_tools_from_minimal_presets(self):
     class ConcreteConfig(connection.AgentConfig):

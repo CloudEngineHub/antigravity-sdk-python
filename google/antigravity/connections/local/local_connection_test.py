@@ -5169,7 +5169,9 @@ class LocalAgentConfigTest(absltest.TestCase):
     self.assertEqual(
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
-    self.assertEqual(config.capabilities.compaction_threshold, 65536)
+    self.assertEqual(config.compaction_config.max_context_tokens, 65536)
+    self.assertIsNone(config.compaction_config.checkpoint_interval_tokens)
+    self.assertIsNone(config.capabilities.compaction_threshold)
     self.assertFalse(config.capabilities.enable_subagents)
 
     # Verify HarnessConfig proto serialization with agent_behavior
@@ -5179,7 +5181,11 @@ class LocalAgentConfigTest(absltest.TestCase):
         harness_config.agent_behavior,
         localharness_pb2.AGENT_BEHAVIOR_MINIMAL,
     )
-    self.assertEqual(harness_config.compaction_threshold, 65536)
+    self.assertEqual(harness_config.compaction_threshold, 0)
+    self.assertEqual(
+        harness_config.compaction_config.checkpoint_interval_tokens, 0
+    )
+    self.assertEqual(harness_config.compaction_config.max_context_tokens, 65536)
     self.assertFalse(harness_config.harness_side_tools.subagents.enabled)
     self.assertTrue(harness_config.harness_side_tools.run_command.enabled)
     self.assertTrue(harness_config.harness_side_tools.view_file.enabled)
@@ -5200,6 +5206,7 @@ class LocalAgentConfigTest(absltest.TestCase):
     self.assertIsInstance(config, local_connection_config.LocalAgentConfig)
     self.assertEqual(config.model, "gemini-2.5-flash-lite")
     self.assertEqual(config.capabilities.compaction_threshold, 8000)
+    self.assertIsNone(config.compaction_config)
     self.assertFalse(config.capabilities.enable_subagents)
     self.assertEqual(
         config.capabilities.agent_behavior, types.AgentBehavior.MINIMAL
@@ -5207,6 +5214,24 @@ class LocalAgentConfigTest(absltest.TestCase):
     self.assertEqual(
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
+
+  def test_lightweight_method_preserves_explicit_compaction_config(self):
+    custom_compaction = types.CompactionConfig(
+        checkpoint_interval_tokens=12345,
+        max_context_tokens=23456,
+    )
+    config = local_connection_config.LocalAgentConfig(
+        model="gemini-3.8-flash",
+        compaction_config=custom_compaction,
+    ).lightweight()
+    self.assertEqual(config.compaction_config, custom_compaction)
+    strategy = config.create_strategy(tool_runner=None, hook_runner=None)
+    harness_config = strategy._build_harness_config()
+    self.assertEqual(harness_config.compaction_threshold, 12345)
+    self.assertEqual(
+        harness_config.compaction_config.checkpoint_interval_tokens, 12345
+    )
+    self.assertEqual(harness_config.compaction_config.max_context_tokens, 23456)
 
   def test_safe_defaults_with_default_workspace(self):
     """LocalAgentConfig defaults to CWD workspace when not specified."""

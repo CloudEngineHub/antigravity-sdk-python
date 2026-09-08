@@ -40,6 +40,9 @@ except ImportError:
 
 _WARMUP_REQUEST_TIMEOUT_SECONDS = 120
 
+# Default token budget allocated for model thinking and reasoning.
+_DEFAULT_THINKING_TOKEN_BUDGET = 8192
+
 
 class LiteRTConnectionStrategy(
     local_openai_connection.LocalOpenAIConnectionStrategy
@@ -68,6 +71,13 @@ class LiteRTConnectionStrategy(
     self._vision_backend = vision_backend
     self._litert_port = port
     self._download_if_missing = download_if_missing
+    self._max_kv_cache_tokens = (
+        litert_connection_config._DEFAULT_MAX_KV_CACHE_TOKENS
+    )
+    self._max_output_tokens = (
+        litert_connection_config._DEFAULT_MAX_OUTPUT_TOKENS
+    )
+    self._thinking_token_budget = _DEFAULT_THINKING_TOKEN_BUDGET
 
     # Strategy Context Lifetimes
     self._engine = None
@@ -77,14 +87,21 @@ class LiteRTConnectionStrategy(
 
     self._configure_litert_logging()
 
+    if compaction_config is not None:
+      effective_compaction = compaction_config
+    else:
+      effective_compaction = (
+          litert_connection_config.derive_litert_compaction_config(
+              max_kv_cache_tokens=self._max_kv_cache_tokens,
+              max_output_tokens=self._max_output_tokens,
+          )
+      )
+
     super().__init__(
         base_url="",
         model_name=os.path.basename(model_path),
-        compaction_config=compaction_config,
+        compaction_config=effective_compaction,
         **kwargs,
-    )
-    self._max_context_tokens = (
-        compaction_config.max_context_tokens if compaction_config else None
     )
 
   def _configure_litert_logging(self) -> None:
@@ -193,7 +210,7 @@ class LiteRTConnectionStrategy(
           cache_dir=self._cache_dir,
           audio_backend=engine_audio,
           vision_backend=engine_vision,
-          max_num_tokens=self._max_context_tokens,
+          max_num_tokens=self._max_kv_cache_tokens,
           # Since the Engine is used in a stateless OpenAI server, we can enable
           # "use_ringbuffers_local_attention" to support larger context length
           # with limited memory.
@@ -211,6 +228,8 @@ class LiteRTConnectionStrategy(
           litert_server.LiteRTOpenAIHandler,
           engine=self._engine_context,
           model_name=self._model_name,
+          max_output_tokens=self._max_output_tokens,
+          thinking_token_budget=self._thinking_token_budget,
       )
       addr = self._openai_server.server_address
       host = addr[0]
@@ -288,9 +307,9 @@ class LiteRTConnectionStrategy(
           "LiteRTConnectionStrategy __aenter__: Starting warm-up request"
       )
       warmup_timeout = float(_WARMUP_REQUEST_TIMEOUT_SECONDS)
-      if self._max_context_tokens:
+      if self._max_kv_cache_tokens:
         warmup_timeout = max(
-            warmup_timeout, float(self._max_context_tokens) / 250.0
+            warmup_timeout, float(self._max_kv_cache_tokens) / 250.0
         )
 
       try:
