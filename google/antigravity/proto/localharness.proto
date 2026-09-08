@@ -717,6 +717,7 @@ message PreToolResult {
   .antigravity.localharness.PreToolResult.Decision decision = 1;
   string reason = 2;
   string modified_arguments_json = 3;
+  .genai.Struct modified_args = 4;
 }
 message PreTurnResult {
   enum Decision {

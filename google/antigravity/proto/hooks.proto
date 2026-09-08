@@ -16,6 +16,7 @@ edition = "2024";
 
 package genai;
 
+import "google/antigravity/proto/content.proto";
 import "google/antigravity/proto/steps.proto";
 
 option features = { field_presence : IMPLICIT enum_type : OPEN utf8_validation : NONE };
@@ -86,6 +87,7 @@ message PreToolResult {
   .genai.PreToolResult.Decision decision = 1;
   string reason = 2;
   string modified_arguments_json = 3;
+  .genai.Struct modified_args = 4;
 }
 message PreTurnResult {
   enum Decision {
