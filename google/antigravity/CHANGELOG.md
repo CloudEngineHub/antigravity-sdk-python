@@ -7,6 +7,57 @@ All notable changes to the Google Antigravity Python SDK will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.17] - 2026-09-08
+
+This release introduces first-class context compaction controls and forward-looking budget scopes for fine-grained session control, adds arithmetic operator support to `UsageMetadata`, and enables tool output truncation for local agent connections. It also fixes nested policy evaluation in interactive REPL sessions and improves tool reflection and structured argument handling.
+
+### 🌟 Key Highlights
+- **Context Compaction Configuration**: Configures cumulative background checkpointing and context window ceilings via `CompactionConfig` on `LocalAgentConfig` and connection configurations, replacing legacy threshold parameters.
+  ```python
+  from antigravity import CompactionConfig, LocalAgentConfig
+
+  config = LocalAgentConfig(
+      compaction_config=CompactionConfig(checkpoint_interval_tokens=20_000, max_context_tokens=65_536)
+  )
+  ```
+- **Forward-Looking Budget Scopes**: Enables delta budget limits across resumed sessions using `BudgetScope.FORWARD_LOOKING`, restricting token usage and model invocations specifically to new turns rather than lifetime totals.
+  ```python
+  from antigravity import BudgetConfig, BudgetScope, LocalAgentConfig
+
+  config = LocalAgentConfig(
+      budget_config=BudgetConfig(total_tokens=10_000, scope=BudgetScope.FORWARD_LOOKING)
+  )
+  ```
+- **UsageMetadata Arithmetic Support**: Adds native addition and scalar multiplication operators to `UsageMetadata` to simplify aggregating token counts with `sum()` and applying scale factors.
+  ```python
+  total_usage = sum([step.usage for step in trajectory], start=UsageMetadata())
+  scaled_usage = total_usage * 1.5
+  ```
+- **Tool Output Truncation for Local Connections**: Configures token limits on tool outputs across local agent configs to prevent oversized bash outputs or tool returns from overflowing the context window.
+  ```python
+  from antigravity import CapabilitiesConfig, LocalAgentConfig, ToolOutputTruncationConfig
+
+  config = LocalAgentConfig(
+      capabilities=CapabilitiesConfig(
+          tool_output_truncation_config=ToolOutputTruncationConfig(max_tokens=4096)
+      )
+  )
+  ```
+
+---
+
+### 📋 Detailed Changes
+
+#### Features & Enhancements
+- **Tool Schema Introspection**: Preserves original callable metadata (`__wrapped__`, `__module__`, `__qualname__`, and type annotations) in `ToolWithSchema` to support introspection via `inspect.signature` and `inspect.unwrap`.
+- **Structured Tool Arguments**: Deserializes structured dictionary arguments and `genai.Struct` messages alongside legacy JSON strings to prevent dropped parameters during tool execution.
+- **Local Trajectory Provenance**: Forwards trajectory identifiers from tool invocations into step provenance metadata.
+- **OS Sandboxing Example**: Adds a getting-started guide demonstrating terminal command sandboxing via `RunCommandConfig(enable_sandbox=True)`.
+
+#### Bug Fixes
+- **Interactive REPL Policy Upgrades**: Nested policy lists bypassed confirmation upgrades in interactive REPL sessions; policies are now flattened before evaluation so command-execution prompts trigger user confirmation.
+- **Public Import AttributeError**: Missing internal ingestion options caused `AttributeError` during public SDK imports; descriptors are now resolved dynamically to ensure clean external loading.
+
 ## [0.1.16] - 2026-08-31
 
 This release updates the default model for new agents to `gemini-3.8-flash` for higher quality and reasoning capabilities, alongside improving agent configuration expressiveness, performance for small and local models, and platform connectivity. Developers can now easily configure lightweight agents optimized for local environments via a new fluent method, connect to Vertex AI with API keys in Express mode, and benefit from expanded support for custom tool implementations (functors, dataclasses).
