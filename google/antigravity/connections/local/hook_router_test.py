@@ -962,13 +962,70 @@ class HookRouterPreToolTest(absltest.TestCase):
       resp = sent_events[0].call_hook_response
       self.assertEqual(resp.request_id, "test_pre_modify")
       self.assertTrue(resp.HasField("pre_tool_result"))
+      self.assertTrue(resp.pre_tool_result.HasField("modified_args"))
       self.assertEqual(
-          resp.pre_tool_result.decision,
-          localharness_pb2.PreToolResult.Decision.ALLOW,
+          resp.pre_tool_result.modified_args.fields[0].name, "cmd"
+      )
+      self.assertEqual(
+          resp.pre_tool_result.modified_args.fields[0].value.string_value,
+          "echo 'sanitized'",
       )
       self.assertEqual(
           resp.pre_tool_result.modified_arguments_json,
           json.dumps({"cmd": "echo 'sanitized'"}),
+      )
+
+    asyncio.run(_test())
+
+  def test_handle_pre_tool_modified_args_non_json_serializable(self):
+
+    async def _test():
+
+      class CustomArg:
+
+        def __str__(self):
+          return "custom_value"
+
+      @hooks.pre_tool_call_decide
+      async def modifying_hook(data):
+        del data
+        return hooks.HookResult(
+            allow=True,
+            modified_args={"custom": CustomArg(), "str_val": "hello"},
+        )
+
+      hook_runner = h_runner.HookRunner(
+          pre_tool_call_decide_hooks=[modifying_hook],
+      )
+
+      sent_events = []
+
+      async def mock_send(event: localharness_pb2.InputEvent):
+        sent_events.append(event)
+
+      router = HookRouter(hook_runner, mock_send)
+
+      req = localharness_pb2.CallHookRequest(
+          request_id="test_pre_modify_custom",
+          name="PreTool",
+          type=localharness_pb2.LIFECYCLE_HOOK_PRE_TOOL,
+          pre_tool_args=localharness_pb2.PreToolArgs(
+              tool_name="run_command",
+              arguments_json='{"cmd": "echo test"}',
+              call_id="call_custom",
+          ),
+      )
+
+      # Must not raise TypeError from json.dumps.
+      await router.handle(req)
+
+      self.assertLen(sent_events, 1)
+      resp = sent_events[0].call_hook_response
+      self.assertEqual(resp.request_id, "test_pre_modify_custom")
+      self.assertTrue(resp.HasField("pre_tool_result"))
+      self.assertTrue(resp.pre_tool_result.HasField("modified_args"))
+      self.assertIn(
+          "custom_value", resp.pre_tool_result.modified_arguments_json
       )
 
     asyncio.run(_test())
