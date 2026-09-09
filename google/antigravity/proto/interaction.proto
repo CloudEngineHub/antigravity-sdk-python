@@ -158,11 +158,3 @@ message InteractionMetadata {
   string created = 3;
   string updated = 4;
 }
-message AppendedDeveloperInstructions {
-  message Section {
-    string title = 1;
-    string content = 2;
-  }
-  string custom_identity = 1;
-  repeated .genai.AppendedDeveloperInstructions.Section appended_sections = 2;
-}

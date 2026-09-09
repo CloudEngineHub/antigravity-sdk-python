@@ -22,6 +22,12 @@ import "google/antigravity/proto/thinking.proto";
 import "google/antigravity/proto/tools.proto";
 import "google/antigravity/proto/genai_json_annotations.proto";
 
+enum AgentBehavior {
+  AGENT_BEHAVIOR_UNSPECIFIED = 0;
+  AGENT_BEHAVIOR_AUTONOMOUS = 1;
+  AGENT_BEHAVIOR_INTERACTIVE = 2;
+  AGENT_BEHAVIOR_MINIMAL = 3;
+}
 message AgentInteraction {
   oneof agent_config {
     option (gaos.parsing.is_union) = true;
@@ -53,6 +59,29 @@ message DeepResearchAgentConfig {
 }
 message DynamicAgentConfig {
   .genai.Struct config = 2 [(gaos.parsing.additional_properties) = true];
+}
+message AppendedDeveloperInstructions {
+  message Section {
+    string title = 1;
+    string content = 2;
+  }
+  string custom_identity = 1;
+  repeated .genai.AppendedDeveloperInstructions.Section appended_sections = 2;
+}
+message SubagentSkillsConfig {
+  message InheritConfig {
+    repeated string extra_skills_paths = 1;
+    repeated string skill_names = 2;
+  }
+  message NoneConfig {}
+  message OverrideConfig {
+    repeated string skills_paths = 1;
+  }
+  oneof mode {
+    .genai.SubagentSkillsConfig.InheritConfig inherit_config = 1;
+    .genai.SubagentSkillsConfig.NoneConfig none_config = 2;
+    .genai.SubagentSkillsConfig.OverrideConfig override_config = 3;
+  }
 }
 message AntigravityAgentConfig {
   message GeminiModelOptions {
@@ -94,7 +123,20 @@ message AntigravityAgentConfig {
   message AntigravityCompactionConfig {
     int32 token_threshold = 1;
   }
-  message AntigravitySubagentsConfig {}
+  message AntigravitySubagentsConfig {
+    message CustomAgent {
+      string name = 1;
+      string description = 2;
+      string system_instruction = 3;
+      repeated .genai.Content developer_instructions = 4;
+      .genai.AppendedDeveloperInstructions appended_developer_instructions = 5;
+      repeated .genai.Tool tools = 6;
+      .genai.SubagentSkillsConfig skills_config = 7;
+      .genai.AgentBehavior agent_behavior = 8;
+    }
+    repeated .genai.AntigravityAgentConfig.AntigravitySubagentsConfig
+        .CustomAgent custom_subagents = 1;
+  }
   message Workspace {
     oneof workspace_type {
       .genai.AntigravityAgentConfig.FilesystemWorkspace filesystem_workspace =
