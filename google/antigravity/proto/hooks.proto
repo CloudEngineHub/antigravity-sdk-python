@@ -16,21 +16,12 @@ edition = "2024";
 
 package genai;
 
+import "google/antigravity/proto/agents.proto";
 import "google/antigravity/proto/content.proto";
 import "google/antigravity/proto/steps.proto";
 
 option features = { field_presence : IMPLICIT enum_type : OPEN utf8_validation : NONE };
 
-enum LifecycleHook {
-  LIFECYCLE_HOOK_UNSPECIFIED = 0;
-  LIFECYCLE_HOOK_ON_SESSION_START = 1;
-  LIFECYCLE_HOOK_ON_SESSION_END = 2;
-  LIFECYCLE_HOOK_PRE_TURN = 3;
-  LIFECYCLE_HOOK_POST_TURN = 4;
-  LIFECYCLE_HOOK_PRE_TOOL = 5;
-  LIFECYCLE_HOOK_POST_TOOL = 6;
-  LIFECYCLE_HOOK_ON_TOOL_ERROR = 7;
-}
 message CallHookRequest {
   oneof args {
     .genai.PreTurnArgs pre_turn_args = 3;
@@ -41,7 +32,7 @@ message CallHookRequest {
   }
   string request_id = 1;
   string name = 2;
-  .genai.LifecycleHook type = 7;
+  .genai.AntigravityAgentConfig.LifecycleHook type = 7;
 }
 message CallHookResponse {
   oneof result {
