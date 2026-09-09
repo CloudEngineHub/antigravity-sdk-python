@@ -26,8 +26,8 @@ import pathlib
 import struct
 import subprocess
 import tempfile
-from typing import Any, Literal, Union
 import typing
+from typing import Any, Literal, Union
 import unittest
 from unittest import mock
 
@@ -1862,9 +1862,10 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     strategy = self._make_strategy()
     config = strategy._build_harness_config()
     self.assertIsInstance(config, localharness_pb2.HarnessConfig)
-    # Default: all harness side tools enabled.
+    # Default: all harness side tools enabled except user_questions
+    # (ask_question).
     self.assertTrue(config.harness_side_tools.subagents.enabled)
-    self.assertTrue(config.harness_side_tools.user_questions.enabled)
+    self.assertFalse(config.harness_side_tools.user_questions.enabled)
     self.assertTrue(config.harness_side_tools.run_command.enabled)
     self.assertTrue(config.harness_side_tools.find.enabled)
     self.assertTrue(config.harness_side_tools.generate_image.enabled)
@@ -2222,6 +2223,20 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     self.assertTrue(config.harness_side_tools.grep_search.enabled)
     self.assertTrue(config.harness_side_tools.list_dir.enabled)
     self.assertTrue(config.harness_side_tools.search_web.enabled)
+
+  def test_capabilities_config_disabled_tools_preserves_ask_question_disabled(
+      self,
+  ):
+    """Verifies that disabling other tools leaves ASK_QUESTION disabled."""
+    strategy = self._make_strategy(
+        capabilities_config=types.CapabilitiesConfig(
+            disabled_tools=[types.BuiltinTools.RUN_COMMAND],
+        )
+    )
+    config = strategy._build_harness_config()
+    self.assertFalse(config.harness_side_tools.run_command.enabled)
+    self.assertFalse(config.harness_side_tools.user_questions.enabled)
+    self.assertTrue(config.harness_side_tools.view_file.enabled)
     self.assertTrue(config.harness_side_tools.read_url_content.enabled)
 
   def test_capabilities_config_enabled_tools(self):
@@ -2390,18 +2405,34 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
   def test_capabilities_config_none_uses_defaults(self):
     """Verifies that capabilities_config=None produces default-enabled tools.
 
-    Why: The most common case is no explicit CapabilitiesConfig; all tools
-    should be enabled and compaction_threshold unset.
+    Why: The most common case is no explicit CapabilitiesConfig; default tools
+    should be enabled (except user_questions) and compaction_threshold unset.
     How: Build with no capabilities_config and assert defaults.
     """
     strategy = self._make_strategy()
     config = strategy._build_harness_config()
     self.assertTrue(config.harness_side_tools.subagents.enabled)
-    self.assertTrue(config.harness_side_tools.user_questions.enabled)
+    self.assertFalse(config.harness_side_tools.user_questions.enabled)
     self.assertTrue(config.harness_side_tools.run_command.enabled)
     self.assertTrue(config.harness_side_tools.find.enabled)
     self.assertEqual(config.compaction_threshold, 0)
     self.assertFalse(config.HasField("compaction_config"))
+
+  def test_capabilities_config_explicit_ask_question_enabled(self):
+    """Verifies that explicitly enabling ASK_QUESTION sets user_questions.enabled."""
+    strategy = self._make_strategy(
+        capabilities_config=types.CapabilitiesConfig(
+            agent_behavior=types.AgentBehavior.INTERACTIVE,
+            enabled_tools=[
+                types.BuiltinTools.VIEW_FILE,
+                types.BuiltinTools.ASK_QUESTION,
+            ],
+        )
+    )
+    config = strategy._build_harness_config()
+    self.assertTrue(config.harness_side_tools.user_questions.enabled)
+    self.assertTrue(config.harness_side_tools.view_file.enabled)
+    self.assertFalse(config.harness_side_tools.run_command.enabled)
 
   def test_compaction_config_explicit(self):
     """Verifies CompactionConfig maps to HarnessConfig.compaction_config."""

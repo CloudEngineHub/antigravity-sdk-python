@@ -702,6 +702,17 @@ class BuiltinToolsTest(parameterized.TestCase):
     ]
     self.assertEqual(types.BuiltinTools.minimal(), expected)
 
+  def test_default_excludes_ask_question(self):
+    """Verifies that default() returns all tools except ASK_QUESTION."""
+    expected = set(types.BuiltinTools) - {types.BuiltinTools.ASK_QUESTION}
+    self.assertEqual(set(types.BuiltinTools.default()), expected)
+    self.assertNotIn(
+        types.BuiltinTools.ASK_QUESTION, types.BuiltinTools.default()
+    )
+    self.assertLen(
+        types.BuiltinTools.default(), len(types.BuiltinTools) - 1
+    )
+
 
 class AgentBehaviorTest(unittest.TestCase):
   """Tests for the AgentBehavior enum."""

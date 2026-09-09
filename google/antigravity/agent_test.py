@@ -387,6 +387,32 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
       "local.local_connection.LocalConnectionStrategy"
   )
   @mock.patch.object(conversation.Conversation, "create")
+  async def test_policy_guard_disabling_all_default_write_tools_passes(
+      self, mock_conv_create, mock_strategy_class
+  ):
+    """Disabling all default write tools leaves only read-only tools active."""
+    del mock_conv_create
+    mock_strategy_class.return_value = mock.MagicMock(stop=mock.AsyncMock())
+    default_write_tools = list(
+        set(types.BuiltinTools.default())
+        - set(types.BuiltinTools.read_only())
+    )
+    config = local_connection.LocalAgentConfig(
+        system_instructions="test",
+        capabilities=types.CapabilitiesConfig(
+            disabled_tools=default_write_tools,
+        ),
+        policies=[],
+        workspaces=[],
+    )
+    async with agent.Agent(config):
+      pass  # Should not raise.
+
+  @mock.patch(
+      "google.antigravity.connections."
+      "local.local_connection.LocalConnectionStrategy"
+  )
+  @mock.patch.object(conversation.Conversation, "create")
   async def test_policy_guard_write_tools_with_policy_passes(
       self, mock_conv_create, mock_strategy_class
   ):

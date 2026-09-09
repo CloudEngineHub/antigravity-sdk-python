@@ -971,12 +971,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
             enabled_tools=types.BuiltinTools.read_only(),
             enable_subagents=False,
         )
-    all_tools = set(types.BuiltinTools)
-    if cfg.enabled_tools is not None:
-      return set(cfg.enabled_tools)
-    if cfg.disabled_tools is not None:
-      return all_tools - set(cfg.disabled_tools)
-    return all_tools
+    return connection.resolve_active_tools(cfg)
 
   def _to_system_instructions_proto(
       self,

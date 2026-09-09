@@ -334,5 +334,58 @@ class AgentConfigTest(unittest.TestCase):
     self.assertIsNone(config.capabilities.disabled_tools)
 
 
+class ResolveActiveToolsTest(unittest.TestCase):
+  """Tests for resolve_active_tools helper."""
+
+  def test_none_config_returns_default(self):
+    expected = set(types.BuiltinTools.default())
+    self.assertEqual(connection.resolve_active_tools(None), expected)
+
+  def test_enabled_tools_overrides_defaults(self):
+    cfg = types.CapabilitiesConfig(
+        enabled_tools=[
+            types.BuiltinTools.VIEW_FILE,
+            types.BuiltinTools.ASK_QUESTION,
+        ]
+    )
+    expected = {types.BuiltinTools.VIEW_FILE, types.BuiltinTools.ASK_QUESTION}
+    self.assertEqual(connection.resolve_active_tools(cfg), expected)
+
+  def test_disabled_tools_subtracts_from_default(self):
+    cfg = types.CapabilitiesConfig(
+        disabled_tools=[types.BuiltinTools.RUN_COMMAND]
+    )
+    expected = set(types.BuiltinTools.default()) - {
+        types.BuiltinTools.RUN_COMMAND
+    }
+    self.assertEqual(connection.resolve_active_tools(cfg), expected)
+    self.assertNotIn(
+        types.BuiltinTools.ASK_QUESTION,
+        connection.resolve_active_tools(cfg),
+    )
+
+  def test_custom_defaults(self):
+    custom_defaults = [
+        types.BuiltinTools.VIEW_FILE,
+        types.BuiltinTools.LIST_DIR,
+    ]
+    cfg = types.CapabilitiesConfig(
+        disabled_tools=[types.BuiltinTools.LIST_DIR]
+    )
+    result = connection.resolve_active_tools(cfg, defaults=custom_defaults)
+    self.assertEqual(result, {types.BuiltinTools.VIEW_FILE})
+
+  def test_subagent_capabilities(self):
+    subagent_cfg = types.SubagentCapabilities(
+        disabled_tools=[types.BuiltinTools.RUN_COMMAND]
+    )
+    expected = set(types.BuiltinTools.default()) - {
+        types.BuiltinTools.RUN_COMMAND
+    }
+    self.assertEqual(
+        connection.resolve_active_tools(subagent_cfg), expected
+    )
+
+
 if __name__ == "__main__":
   unittest.main()

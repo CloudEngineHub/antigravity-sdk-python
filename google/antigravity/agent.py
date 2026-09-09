@@ -78,14 +78,7 @@ class Agent:
       active_policies = list(self._config.policies)
       cfg = self._config.capabilities
       read_only_tools = set(types.BuiltinTools.read_only())
-      # enabled_tools and disabled_tools are mutually exclusive
-      # (enforced by CapabilitiesConfig validation).
-      if cfg.enabled_tools is not None:
-        active_tools = set(cfg.enabled_tools)
-      elif cfg.disabled_tools is not None:
-        active_tools = set(types.BuiltinTools) - set(cfg.disabled_tools)
-      else:
-        active_tools = set(types.BuiltinTools)
+      active_tools = connection_module.resolve_active_tools(cfg)
       has_write_tools = bool(active_tools - read_only_tools)
       has_mcp_servers = bool(self._config.mcp_servers)
       has_tool_decide_hook = bool(self._hook_runner.pre_tool_call_decide_hooks)

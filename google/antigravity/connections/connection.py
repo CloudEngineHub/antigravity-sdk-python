@@ -40,6 +40,32 @@ from google.antigravity.hooks import policy
 from google.antigravity.triggers import triggers as triggers_mod
 
 
+def resolve_active_tools(
+    cfg: types.CapabilitiesConfig | types.SubagentCapabilities | None,
+    *,
+    defaults: list[types.BuiltinTools] | None = None,
+) -> set[types.BuiltinTools]:
+  """Resolves the set of active builtin tools from a capabilities config.
+
+  Args:
+    cfg: A CapabilitiesConfig or SubagentCapabilities instance, or None.
+    defaults: Optional base set of default tools. When omitted, defaults to
+      `BuiltinTools.default()`.
+
+  Returns:
+    A set of active BuiltinTools.
+  """
+  default_set = set(
+      defaults if defaults is not None else types.BuiltinTools.default()
+  )
+  if cfg is not None:
+    if cfg.enabled_tools is not None:
+      return set(cfg.enabled_tools)
+    if cfg.disabled_tools is not None:
+      return default_set - set(cfg.disabled_tools)
+  return default_set
+
+
 class AgentConfig(abc.ABC, pydantic.BaseModel):
   """Abstract base class for agent configuration.
 

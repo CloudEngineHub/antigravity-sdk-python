@@ -439,6 +439,17 @@ class BuiltinTools(str, enum.Enum):
         cls.SEARCH_DIR,
     ]
 
+  @classmethod
+  def default(cls) -> list["BuiltinTools"]:
+    """Returns the default set of builtin tools for autonomous agents.
+
+    Excludes ASK_QUESTION because autonomous agents cannot prompt the user.
+
+    Returns:
+        A list of default BuiltinTools.
+    """
+    return [t for t in cls if t != cls.ASK_QUESTION]
+
 
 class CapabilitiesConfig(pydantic.BaseModel):
   """General agent capability configuration.
@@ -472,12 +483,16 @@ class CapabilitiesConfig(pydantic.BaseModel):
       overhead for small-context models. Defaults to AgentBehavior.AUTONOMOUS.
     enabled_tools: Explicit allowlist of builtin tools to enable. Mutually
       exclusive with disabled_tools. When None, the harness defaults are used
-      (all tools enabled). Disabled tools are removed from the model's context,
-      saving tokens and preventing the model from even considering them.
+      (all tools enabled except ASK_QUESTION). Disabled tools are removed
+      from the model's context, saving tokens and preventing the model from
+      even considering them.
     disabled_tools: Explicit denylist of builtin tools to disable. Mutually
-      exclusive with enabled_tools. When None, the harness defaults are used
-      (all tools enabled). Disabled tools are removed from the model's context,
-      saving tokens and preventing the model from even considering them.
+      exclusive with enabled_tools. When specified, the given tools are
+      subtracted from default() (which already excludes ASK_QUESTION).
+      When None, all default tools are enabled. Disabled tools are removed
+      from the model's context, saving tokens and preventing the model from
+      even considering them. Note that to enable ASK_QUESTION, it must be
+      explicitly included in enabled_tools.
     compaction_threshold: (Deprecated) Configure
       CompactionConfig(checkpoint_interval_tokens=...) directly on AgentConfig
       instead.
