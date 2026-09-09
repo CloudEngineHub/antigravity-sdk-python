@@ -79,6 +79,20 @@ message FunctionInvocation {
   string name = 2;
   .genai.Struct arguments = 3;
 }
+message SkillDeclaration {
+  string name = 1;
+  string description = 2;
+}
+message SlashCommandDeclaration {
+  string name = 1;
+  string description = 2;
+}
+message CapabilitiesUpdate {
+  repeated .genai.SkillDeclaration available_skills = 1;
+  repeated .genai.SkillDeclaration added_skills = 2;
+  repeated string removed_skill_names = 3;
+  repeated .genai.SlashCommandDeclaration available_slash_commands = 4;
+}
 message ServerEvent {
   oneof event_type {
     option (gaos.parsing.subtype_source) = true;
@@ -117,6 +131,8 @@ message CreateInteractionEvent {
 }
 message InteractionCreatedEvent {
   string interaction_id = 1;
+  repeated .genai.SkillDeclaration available_skills = 2;
+  repeated .genai.SlashCommandDeclaration available_slash_commands = 3;
 }
 message Payload {
   oneof event_type {
@@ -132,6 +148,7 @@ message Payload {
     .genai.StateUpdate state_update = 13;
     .genai.FunctionInvocation function_invocation = 14;
     .genai.CallHookRequest call_hook_request = 15;
+    .genai.CapabilitiesUpdate capabilities_update = 17;
     .genai.CallHookResponse call_hook_response = 16;
   }
   string sub_interaction_id = 6;
