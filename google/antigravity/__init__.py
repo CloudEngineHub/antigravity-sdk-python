@@ -40,6 +40,7 @@ from google.antigravity.types import ModelOutputRetryConfig
 from google.antigravity.types import ModelTarget
 from google.antigravity.types import ModelType
 from google.antigravity.types import RetryConfig
+from google.antigravity.types import ServiceTier
 from google.antigravity.types import SystemInstructions
 from google.antigravity.types import SystemInstructionSection
 from google.antigravity.types import TemplatedSystemInstructions
@@ -75,6 +76,7 @@ __all__ = [
     "ModelTarget",
     "ModelType",
     "RetryConfig",
+    "ServiceTier",
     "SystemInstructions",
     "SystemInstructionSection",
     "TemplatedSystemInstructions",
