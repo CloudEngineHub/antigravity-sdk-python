@@ -827,6 +827,7 @@ message BudgetConfig {
   .antigravity.localharness.BudgetConfig.BudgetScope scope = 6;
 }
 message CompactionConfig {
-  uint32 checkpoint_interval_tokens = 1;
-  uint32 max_context_tokens = 2;
+  uint32 token_threshold = 1;
+  uint32 checkpoint_interval_tokens = 2;
+  uint32 max_context_tokens = 3;
 }
