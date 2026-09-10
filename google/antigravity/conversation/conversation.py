@@ -294,6 +294,11 @@ class Conversation:
     return self._connection.conversation_id
 
   @property
+  def sandbox_status(self) -> types.SandboxStatus | None:
+    """Returns the OS command sandbox status reported at handshake, if any."""
+    return self._connection.sandbox_status
+
+  @property
   def total_usage(self) -> types.UsageMetadata:
     """Returns cumulative token usage across all turns in this session."""
     return self._connection.cumulative_usage.model_copy()

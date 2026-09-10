@@ -309,11 +309,16 @@ message OutputEvent {
   int64 seq_num = 1;
   int64 timestamp_micros = 2;
 }
+message SandboxStatus {
+  bool available = 1;
+  string unavailable_reason = 2;
+}
 message InitializeConversationResponse {
   string cascade_id = 1;
   repeated .antigravity.localharness.StepUpdate history = 2;
   .antigravity.localharness.UsageMetadata cumulative_usage = 3;
   repeated .antigravity.localharness.TrajectoryUsageEntry trajectory_usage = 4;
+  .antigravity.localharness.SandboxStatus sandbox_status = 5;
 }
 message StepUpdate {
   enum State {

@@ -357,6 +357,31 @@ def _get_ws_close_code(e: websockets.ConnectionClosed) -> int | str | None:
   return getattr(e, "code", None)
 
 
+def warn_if_sandbox_unavailable(
+    run_command_cfg: localharness_pb2.RunCommandToolConfig,
+    sandbox_status: types.SandboxStatus | None,
+) -> None:
+  """Logs a warning when the sandbox was requested but is unavailable.
+
+  Emits a single warning when the caller opted into the OS command sandbox
+  (run_command enabled with enable_sandbox=True) but the harness reports the
+  sandbox cannot be enforced. Behavior is otherwise unchanged -- run_command
+  still executes, just unsandboxed. When the harness omits the sandbox status
+  (e.g. an older harness), sandbox_status is None and no warning is emitted.
+  """
+  requested_sandbox = run_command_cfg.enabled and run_command_cfg.enable_sandbox
+  if (
+      requested_sandbox
+      and sandbox_status is not None
+      and not sandbox_status.available
+  ):
+    logging.warning(
+        "enable_sandbox=True but the OS sandbox is unavailable in this harness"
+        " environment (%s); run_command will execute UNSANDBOXED.",
+        sandbox_status.unavailable_reason or "reason unknown",
+    )
+
+
 class LocalConnection(connection.Connection):
   """Connection to the Go-based local harness."""
 
@@ -372,6 +397,7 @@ class LocalConnection(connection.Connection):
       dynamic_policy_map: dict[str, "policy.Policy"] | None = None,
       initial_usage: types.UsageMetadata | None = None,
       initial_trajectory_usages: dict[str, types.UsageMetadata] | None = None,
+      sandbox_status: types.SandboxStatus | None = None,
   ):
     self._hook_runner = hook_runner
     self._process = process
@@ -380,6 +406,9 @@ class LocalConnection(connection.Connection):
     self._env = env
     self._debug_config = debug_config
     self.__initial_history = initial_history or []
+    # Static handshake data, so held on the connection rather than routed
+    # through the event processor like usage.
+    self._sandbox_status = sandbox_status
     self._client_cancelled = False
     self._is_receiving = False
 
@@ -434,6 +463,12 @@ class LocalConnection(connection.Connection):
   def trajectory_usages(self) -> dict[str, types.UsageMetadata]:
     """Returns per-trajectory cumulative token usage from the backend."""
     return self._processor.trajectory_usages
+
+  @property
+  @override
+  def sandbox_status(self) -> types.SandboxStatus | None:
+    """Returns the OS command sandbox status reported at handshake, if any."""
+    return self._sandbox_status
 
   @property
   def _last_turn_stop_reason(self) -> types.StopReason:
@@ -1409,27 +1444,19 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       initial_history: list[types.Step] = []
       initial_usage = None
       initial_trajectory_usages = {}
+      sandbox_status = None
       if isinstance(raw_init_resp, (str, bytes)):
         init_resp_event = localharness_pb2.OutputEvent()
         json_format.Parse(raw_init_resp, init_resp_event)
         init_resp = init_resp_event.initialize_conversation_response
-        initial_history = [
-            event_processor.LocalConnectionStep.from_dict(
-                json_format.MessageToDict(
-                    step_update_proto, preserving_proto_field_name=True
-                )
-            )
-            for step_update_proto in init_resp.history
-        ]
-        if init_resp.HasField("cumulative_usage"):
-          initial_usage = event_processor.parse_usage_metadata(
-              init_resp.cumulative_usage
-          )
-        for entry in init_resp.trajectory_usage:
-          if entry.trajectory_id and entry.HasField("usage"):
-            initial_trajectory_usages[entry.trajectory_id] = (
-                event_processor.parse_usage_metadata(entry.usage)
-            )
+        parsed = event_processor.parse_initialize_response(init_resp)
+        initial_history = parsed.history
+        initial_usage = parsed.cumulative_usage
+        initial_trajectory_usages = parsed.trajectory_usages
+        sandbox_status = parsed.sandbox_status
+        warn_if_sandbox_unavailable(
+            harness_config.harness_side_tools.run_command, sandbox_status
+        )
     except Exception as e:
       process.kill()
       stderr_output = process.stderr.read().decode("utf-8")
@@ -1448,6 +1475,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
         dynamic_policy_map=self._dynamic_policy_map or None,
         initial_usage=initial_usage,
         initial_trajectory_usages=initial_trajectory_usages,
+        sandbox_status=sandbox_status,
     )
     self._connection._start_stderr_reader(process.stderr)
 

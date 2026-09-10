@@ -15,6 +15,7 @@
 """Event processor for localharness events."""
 
 import asyncio
+import dataclasses
 import json
 import logging
 from typing import Any, Callable, Coroutine, cast
@@ -249,8 +250,6 @@ def _extract_tool_args(
   return {}
 
 
-
-
 class LocalConnectionStep(types.Step):
   """Connection-specific step for LocalConnection."""
 
@@ -406,6 +405,59 @@ class LocalConnectionStep(types.Step):
         ),
         structured_output=structured_output,
     )
+
+
+@dataclasses.dataclass
+class InitializeResult:
+  """Parsed contents of a localharness InitializeConversationResponse."""
+
+  history: list[types.Step]
+  cumulative_usage: types.UsageMetadata | None
+  trajectory_usages: dict[str, types.UsageMetadata]
+  sandbox_status: types.SandboxStatus | None
+
+
+def parse_initialize_response(
+    init_resp: localharness_pb2.InitializeConversationResponse,
+) -> InitializeResult:
+  """Parses an InitializeConversationResponse into SDK types.
+
+  Centralizes parsing of the initialization handshake -- history, cumulative and
+  per-trajectory usage, and OS sandbox status -- so all connection strategies
+  share a single implementation instead of parsing the response inline.
+  """
+  history: list[types.Step] = [
+      LocalConnectionStep.from_dict(
+          json_format.MessageToDict(
+              step_update_proto, preserving_proto_field_name=True
+          )
+      )
+      for step_update_proto in init_resp.history
+  ]
+
+  cumulative_usage = None
+  if init_resp.HasField("cumulative_usage"):
+    cumulative_usage = parse_usage_metadata(init_resp.cumulative_usage)
+
+  trajectory_usages: dict[str, types.UsageMetadata] = {}
+  for entry in init_resp.trajectory_usage:
+    if entry.trajectory_id and entry.HasField("usage"):
+      trajectory_usages[entry.trajectory_id] = parse_usage_metadata(entry.usage)
+
+  sandbox_status = None
+  if init_resp.HasField("sandbox_status"):
+    status_proto = init_resp.sandbox_status
+    sandbox_status = types.SandboxStatus(
+        available=status_proto.available,
+        unavailable_reason=status_proto.unavailable_reason or None,
+    )
+
+  return InitializeResult(
+      history=history,
+      cumulative_usage=cumulative_usage,
+      trajectory_usages=trajectory_usages,
+      sandbox_status=sandbox_status,
+  )
 
 
 class LocalHarnessEventProcessor:

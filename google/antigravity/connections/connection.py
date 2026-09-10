@@ -375,6 +375,15 @@ class Connection(abc.ABC):
     return {}
 
   @property
+  def sandbox_status(self) -> types.SandboxStatus | None:
+    """Returns the OS command sandbox status reported at handshake.
+
+    Subclasses override to provide live status. Default returns None
+    (no sandbox status reported / not applicable to this connection type).
+    """
+    return None
+
+  @property
   def _last_turn_stop_reason(self) -> types.StopReason:
     """Returns the stop reason of the most recent turn.
 

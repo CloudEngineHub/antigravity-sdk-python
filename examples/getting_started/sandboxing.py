@@ -32,6 +32,10 @@ The demo asks the agent to write a file *outside* its workspace (into
 ``$HOME``). With the sandbox enabled the write is blocked; with it disabled the
 same command would succeed.
 
+If the OS sandbox is unavailable in the current environment, ``run_command``
+still runs (unsandboxed) and the SDK logs a warning at startup rather than
+failing silently, so an unenforced sandbox is never a surprise.
+
 To run:
   python sandboxing.py
 
@@ -106,14 +110,12 @@ async def main() -> None:
   escaped = os.path.exists(_ESCAPE_PROBE_PATH)
   print()
   if escaped:
-    # enable_sandbox has no effect where the exebox sandbox is unavailable, and
-    # the SDK neither warns nor raises in that case -- so surface it loudly here
-    # rather than letting the write pass silently.
+    # The sandbox was unavailable in this environment, so the write ran
+    # unsandboxed. The SDK already logged a warning about this at startup (see
+    # above); the write is not silently contained-looking. Clean up the probe.
     print(
-        "  WARNING: file WAS created -> the write was NOT sandboxed. "
-        "enable_sandbox has no effect where the exebox sandbox is unavailable. "
-        "Verify the sandbox is available in your environment before relying "
-        "on it."
+        "  RESULT: file WAS created -> the sandbox was unavailable, so the"
+        " command ran unsandboxed (see the SDK warning logged at startup)."
     )
     os.remove(_ESCAPE_PROBE_PATH)
   else:

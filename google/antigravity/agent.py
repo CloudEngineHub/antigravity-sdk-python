@@ -209,3 +209,16 @@ class Agent:
     if not self._conversation:
       return None
     return self._conversation.conversation_id or None
+
+  @property
+  def sandbox_status(self) -> types.SandboxStatus | None:
+    """Returns the OS command sandbox status reported by the harness.
+
+    When ``enable_sandbox`` was requested but ``sandbox_status.available`` is
+    False, run_command executed unsandboxed. Application authors can inspect
+    this to surface fallback UX. Returns None before the session starts or when
+    the harness did not report a status.
+    """
+    if not self._conversation:
+      return None
+    return self._conversation.sandbox_status

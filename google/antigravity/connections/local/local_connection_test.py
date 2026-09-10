@@ -51,6 +51,67 @@ from google.antigravity.tools import tool_context
 from google.antigravity.tools import tool_runner
 
 
+class WarnIfSandboxUnavailableTest(absltest.TestCase):
+  """Tests for local_connection.warn_if_sandbox_unavailable."""
+
+  def _run_command_cfg(self, *, enabled=True, enable_sandbox=True):
+    return localharness_pb2.RunCommandToolConfig(
+        enabled=enabled, enable_sandbox=enable_sandbox
+    )
+
+  def test_warns_when_requested_and_unavailable(self):
+    status = types.SandboxStatus(
+        available=False, unavailable_reason="no user namespaces"
+    )
+    with mock.patch.object(local_connection.logging, "warning") as warn:
+      local_connection.warn_if_sandbox_unavailable(
+          self._run_command_cfg(), status
+      )
+    warn.assert_called_once()
+    self.assertEqual(warn.call_args.args[1], "no user namespaces")
+
+  def test_warns_reason_unknown_when_reason_missing(self):
+    status = types.SandboxStatus(available=False)
+    with mock.patch.object(local_connection.logging, "warning") as warn:
+      local_connection.warn_if_sandbox_unavailable(
+          self._run_command_cfg(), status
+      )
+    warn.assert_called_once()
+    self.assertEqual(warn.call_args.args[1], "reason unknown")
+
+  def test_no_warning_when_available(self):
+    status = types.SandboxStatus(available=True)
+    with mock.patch.object(local_connection.logging, "warning") as warn:
+      local_connection.warn_if_sandbox_unavailable(
+          self._run_command_cfg(), status
+      )
+    warn.assert_not_called()
+
+  def test_no_warning_when_status_unset(self):
+    # Older harness that omits sandbox status -> no spurious warning.
+    with mock.patch.object(local_connection.logging, "warning") as warn:
+      local_connection.warn_if_sandbox_unavailable(
+          self._run_command_cfg(), None
+      )
+    warn.assert_not_called()
+
+  def test_no_warning_when_sandbox_not_requested(self):
+    status = types.SandboxStatus(available=False, unavailable_reason="x")
+    with mock.patch.object(local_connection.logging, "warning") as warn:
+      local_connection.warn_if_sandbox_unavailable(
+          self._run_command_cfg(enable_sandbox=False), status
+      )
+    warn.assert_not_called()
+
+  def test_no_warning_when_run_command_disabled(self):
+    status = types.SandboxStatus(available=False, unavailable_reason="x")
+    with mock.patch.object(local_connection.logging, "warning") as warn:
+      local_connection.warn_if_sandbox_unavailable(
+          self._run_command_cfg(enabled=False), status
+      )
+    warn.assert_not_called()
+
+
 class PromptSanitizationTest(unittest.TestCase):
   """Tests for _sanitize_prompt and to_proto_input_content."""
 

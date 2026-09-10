@@ -882,6 +882,20 @@ PythonTool = Callable[..., Any]
 # =============================================================================
 
 
+class SandboxStatus(pydantic.BaseModel):
+  """OS command sandbox (exebox) status reported by the harness.
+
+  Attributes:
+    available: Whether the sandbox actually enforces isolation. When False,
+      run_command executes unsandboxed even if enable_sandbox was requested.
+    unavailable_reason: Human-readable explanation when available is False; None
+      when the sandbox is available.
+  """
+
+  available: bool
+  unavailable_reason: str | None = None
+
+
 class UsageMetadata(pydantic.BaseModel):
   """Token usage metadata from the model API.
 
