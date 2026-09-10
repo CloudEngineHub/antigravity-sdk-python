@@ -468,7 +468,9 @@ class ToolRunner:
 
     Tool calls are executed in parallel via ``asyncio.gather``.  Unknown
     tools and execution failures produce ToolResult with an error message
-    rather than raising.
+    rather than raising. Correlation metadata (``id``, ``step_id``, and
+    ``server_name``) is propagated from each ``ToolCall`` to its corresponding
+    ``ToolResult`` across all execution paths.
 
     Note: tools execute concurrently; callers must not depend on
     sequential side-effect ordering.

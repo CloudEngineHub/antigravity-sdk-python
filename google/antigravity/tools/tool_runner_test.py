@@ -200,8 +200,8 @@ class ToolRunnerTest(absltest.TestCase):
     be executed safely by the ToolRunner.
     Why: Covers manual wrapping use-cases where users need explicit schemas
     attached to synchronous methods.
-    How: Registers a wrapped synchronous placeholder tool, executes it, and asserts
-    expected return string.
+    How: Registers a wrapped synchronous placeholder tool, executes it, and
+      asserts expected return string.
     """
     tool = tool_runner.ToolWithSchema(_sample_tool, {"type": "object"})
     runner = tool_runner.ToolRunner([tool])
@@ -215,8 +215,8 @@ class ToolRunnerTest(absltest.TestCase):
     be executed safely by the ToolRunner.
     Why: Covers manual wrapping use-cases where users need explicit schemas
     attached to asynchronous methods (e.g. MCP tools).
-    How: Registers a wrapped asynchronous placeholder tool, executes it, and asserts
-    expected return sum.
+    How: Registers a wrapped asynchronous placeholder tool, executes it, and
+      asserts expected return sum.
     """
     tool = tool_runner.ToolWithSchema(_async_tool, {"type": "object"})
     runner = tool_runner.ToolRunner([tool])
@@ -652,6 +652,29 @@ class ProcessToolCallsTest(absltest.TestCase):
     self.assertEqual(results[0].step_id, "step_unknown")
     self.assertEqual(results[0].server_name, "unknown_server")
     self.assertIn("Unknown tool", results[0].error)
+
+  def test_process_tool_calls_default_omitted_metadata(self):
+    """Verifies default/omitted id and server_name remain None across all paths."""
+
+    def _failing_tool():
+      raise RuntimeError("boom")
+
+    runner = tool_runner.ToolRunner([_sample_tool, _failing_tool])
+    results = asyncio.run(
+        runner.process_tool_calls([
+            sdk_types.ToolCall(name="_sample_tool", args={"arg1": "World"}),
+            sdk_types.ToolCall(name="_failing_tool"),
+            sdk_types.ToolCall(name="nonexistent_tool"),
+        ])
+    )
+    self.assertLen(results, 3)
+    for res in results:
+      self.assertIsNone(res.id)
+      self.assertIsNone(res.step_id)
+      self.assertIsNone(res.server_name)
+    self.assertEqual(results[0].result, "Hello World")
+    self.assertEqual(results[1].error, "boom")
+    self.assertIn("Unknown tool", results[2].error)
 
 
 class ContextInjectionTest(absltest.TestCase):
@@ -1289,4 +1312,3 @@ class TypeAdapterCachingTest(absltest.TestCase):
 
 if __name__ == "__main__":
   absltest.main()
-
