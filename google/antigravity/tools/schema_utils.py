@@ -30,6 +30,15 @@ _SCHEMA_KEYWORD_MAP: dict[str, str] = {
     "min_properties": "minProperties",
     "max_properties": "maxProperties",
     "unique_items": "uniqueItems",
+    "multiple_of": "multipleOf",
+    "exclusive_minimum": "exclusiveMinimum",
+    "exclusive_maximum": "exclusiveMaximum",
+    "prefix_items": "prefixItems",
+    "property_names": "propertyNames",
+    "dependent_required": "dependentRequired",
+    "dependent_schemas": "dependentSchemas",
+    "unevaluated_properties": "unevaluatedProperties",
+    "unevaluated_items": "unevaluatedItems",
 }
 
 _UPPERCASE_TYPES: frozenset[str] = frozenset((
@@ -42,13 +51,33 @@ _UPPERCASE_TYPES: frozenset[str] = frozenset((
     "NULL",
 ))
 
+# Schema keywords whose dictionary values are named subschemas:
+_SUBSCHEMA_DICT_KEYWORDS: frozenset[str] = frozenset((
+    "properties",
+    "patternProperties",
+    "$defs",
+    "definitions",
+    "dependentSchemas",
+))
+
+# Keywords whose values are literal sample data, values, or property lists:
+_LITERAL_KEYWORDS: frozenset[str] = frozenset((
+    "enum",
+    "const",
+    "default",
+    "example",
+    "examples",
+    "dependentRequired",
+))
+
 
 def normalize_schema(schema: Any) -> Any:
   """Recursively normalizes JSON Schema dictionaries for universal model compatibility.
 
   Converts uppercase GenAI/Protobuf type names to lowercase strings, converts
-  snake_case JSON Schema keywords to camelCase (e.g. `any_of` -> `anyOf`),
-  and preserves literal values (`enum`, `const`, `default`).
+  snake_case JSON Schema keywords to camelCase (e.g. `any_of` -> `anyOf`,
+  `multiple_of` -> `multipleOf`), and preserves literal values (`enum`, `const`,
+  `default`, `example`, `examples`, `dependentRequired`).
 
   Args:
       schema: The raw schema dictionary, list, string, or GenAI Type enum.
@@ -70,12 +99,12 @@ def normalize_schema(schema: Any) -> Any:
           normalized[k] = v.value.lower()
         else:
           normalized[k] = normalize_schema(v)
-      elif k in ("properties", "patternProperties", "$defs", "definitions"):
+      elif k in _SUBSCHEMA_DICT_KEYWORDS:
         if isinstance(v, dict):
           normalized[k] = {pk: normalize_schema(pv) for pk, pv in v.items()}
         else:
           normalized[k] = normalize_schema(v)
-      elif k in ("enum", "const", "default"):
+      elif k in _LITERAL_KEYWORDS:
         normalized[k] = v
       else:
         normalized[k] = normalize_schema(v)

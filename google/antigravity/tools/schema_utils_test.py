@@ -16,6 +16,7 @@
 
 import unittest
 from google.genai import types as genai_types
+import pydantic
 from google.antigravity.tools import schema_utils
 
 
@@ -120,12 +121,179 @@ class SchemaUtilsTest(unittest.TestCase):
         "enum": ["ACTIVE", "INACTIVE", "PENDING"],
         "const": "UPPERCASE_CONST",
         "default": "DEFAULT_VAL",
+        "example": "STRING",
+        "examples": ["STRING", "OBJECT", "NULL"],
     }
     normalized = schema_utils.normalize_schema(input_schema)
     self.assertEqual(normalized["type"], "string")
     self.assertEqual(normalized["enum"], ["ACTIVE", "INACTIVE", "PENDING"])
     self.assertEqual(normalized["const"], "UPPERCASE_CONST")
     self.assertEqual(normalized["default"], "DEFAULT_VAL")
+    self.assertEqual(normalized["example"], "STRING")
+    self.assertEqual(normalized["examples"], ["STRING", "OBJECT", "NULL"])
+
+  def test_normalize_extended_keywords_and_subschemas(self):
+    input_schema = {
+        "multiple_of": 5,
+        "exclusive_minimum": 0,
+        "exclusive_maximum": 100,
+        "prefix_items": [{"type": "STRING"}, {"type": "INTEGER"}],
+        "property_names": {"pattern": "^[a-z]+$"},
+        "dependent_required": {"credit_card": ["billing_address"]},
+        "dependent_schemas": {
+            "credit_card": {
+                "properties": {
+                    "billing_address": {"type": "STRING"},
+                },
+            },
+        },
+        "unevaluated_properties": False,
+        "unevaluated_items": {"type": "STRING"},
+    }
+    normalized = schema_utils.normalize_schema(input_schema)
+    self.assertEqual(normalized["multipleOf"], 5)
+    self.assertEqual(normalized["exclusiveMinimum"], 0)
+    self.assertEqual(normalized["exclusiveMaximum"], 100)
+    self.assertEqual(normalized["prefixItems"][0]["type"], "string")
+    self.assertEqual(normalized["prefixItems"][1]["type"], "integer")
+    self.assertEqual(normalized["propertyNames"], {"pattern": "^[a-z]+$"})
+    self.assertEqual(
+        normalized["dependentRequired"], {"credit_card": ["billing_address"]}
+    )
+    self.assertEqual(
+        normalized["dependentSchemas"]["credit_card"]["properties"][
+            "billing_address"
+        ]["type"],
+        "string",
+    )
+    self.assertFalse(normalized["unevaluatedProperties"])
+    self.assertEqual(normalized["unevaluatedItems"]["type"], "string")
+
+  def test_dependent_required_property_preservation(self):
+    input_schema = {
+        "type": "OBJECT",
+        "properties": {
+            "type": {"type": "STRING"},
+            "min_items": {"type": "INTEGER"},
+            "STATUS": {"type": "STRING"},
+        },
+        "dependent_required": {
+            "type": ["min_items", "properties"],
+            "STATUS": ["STRING", "OBJECT", "NULL"],
+            "schema_key": ["another_prop"],
+        },
+    }
+    normalized = schema_utils.normalize_schema(input_schema)
+    self.assertEqual(normalized["type"], "object")
+    self.assertIn("dependentRequired", normalized)
+    self.assertEqual(
+        normalized["dependentRequired"]["type"], ["min_items", "properties"]
+    )
+    self.assertEqual(
+        normalized["dependentRequired"]["STATUS"], ["STRING", "OBJECT", "NULL"]
+    )
+    self.assertEqual(
+        normalized["dependentRequired"]["schema_key"], ["another_prop"]
+    )
+
+  def test_complex_nested_example_preservation(self):
+    complex_example = {
+        "type": "CUSTOM_RECORD",
+        "data": {
+            "STRING": "VALUE",
+            "flags": ["BOOLEAN", "NULL"],
+            "nested": {"format": "INTEGER"},
+        },
+    }
+    input_schema = {
+        "type": "OBJECT",
+        "example": complex_example,
+        "examples": [complex_example, {"code": "ARRAY"}],
+    }
+    normalized = schema_utils.normalize_schema(input_schema)
+    self.assertEqual(normalized["example"], complex_example)
+    self.assertEqual(normalized["examples"][0], complex_example)
+    self.assertEqual(normalized["examples"][1], {"code": "ARRAY"})
+
+  def test_deeply_nested_subschema_composition(self):
+    input_schema = {
+        "type": "OBJECT",
+        "$defs": {
+            "SubRecord": {
+                "type": "OBJECT",
+                "properties": {"tag": {"type": "STRING"}},
+            }
+        },
+        "properties": {
+            "data_tuple": {
+                "type": "ARRAY",
+                "prefix_items": [
+                    genai_types.Type.STRING,
+                    {"type": "INTEGER", "multiple_of": 2.5},
+                    {"type": "OBJECT", "additional_properties": False},
+                ],
+            }
+        },
+        "dependent_schemas": {
+            "has_auth": {
+                "properties": {
+                    "token": {"type": genai_types.Type.STRING},
+                    "scope": {"type": "STRING", "enum": ["READ", "WRITE"]},
+                },
+                "dependent_required": {"token": ["scope"]},
+            }
+        },
+    }
+    normalized = schema_utils.normalize_schema(input_schema)
+    self.assertEqual(normalized["$defs"]["SubRecord"]["type"], "object")
+    self.assertEqual(
+        normalized["$defs"]["SubRecord"]["properties"]["tag"]["type"], "string"
+    )
+    prefix_items = normalized["properties"]["data_tuple"]["prefixItems"]
+    self.assertEqual(prefix_items[0], "string")
+    self.assertEqual(prefix_items[1]["type"], "integer")
+    self.assertEqual(prefix_items[1]["multipleOf"], 2.5)
+    self.assertEqual(prefix_items[2]["type"], "object")
+    self.assertFalse(prefix_items[2]["additionalProperties"])
+
+    auth_schema = normalized["dependentSchemas"]["has_auth"]
+    self.assertEqual(auth_schema["properties"]["token"]["type"], "string")
+    self.assertEqual(auth_schema["properties"]["scope"]["type"], "string")
+    self.assertEqual(
+        auth_schema["properties"]["scope"]["enum"], ["READ", "WRITE"]
+    )
+    self.assertEqual(auth_schema["dependentRequired"], {"token": ["scope"]})
+
+  def test_pydantic_v2_model_schema_normalization(self):
+    class TestPayload(pydantic.BaseModel):
+      name: str = pydantic.Field(
+          min_length=2, max_length=50, examples=["sample_name"]
+      )
+      count: int = pydantic.Field(multiple_of=5, gt=0, lt=100)
+      tags: list[str] = pydantic.Field(min_length=1, max_length=10)
+
+    raw_schema = TestPayload.model_json_schema()
+    normalized = schema_utils.normalize_schema(raw_schema)
+    self.assertEqual(normalized["type"], "object")
+    self.assertIn("properties", normalized)
+    count_prop = normalized["properties"]["count"]
+    self.assertEqual(count_prop["multipleOf"], 5)
+    self.assertEqual(count_prop["exclusiveMinimum"], 0)
+    self.assertEqual(count_prop["exclusiveMaximum"], 100)
+    self.assertEqual(
+        normalized["properties"]["name"]["examples"], ["sample_name"]
+    )
+
+  def test_empty_and_edge_case_schemas(self):
+    self.assertEqual(schema_utils.normalize_schema({}), {})
+    self.assertEqual(schema_utils.normalize_schema([]), [])
+    self.assertEqual(schema_utils.normalize_schema({"type": []}), {"type": []})
+    self.assertEqual(
+        schema_utils.normalize_schema(
+            {"additional_properties": True, "unevaluated_properties": False}
+        ),
+        {"additionalProperties": True, "unevaluatedProperties": False},
+    )
 
   def test_passthrough_non_schema_values(self):
     self.assertEqual(schema_utils.normalize_schema(42), 42)
