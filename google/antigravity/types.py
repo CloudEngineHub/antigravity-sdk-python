@@ -494,8 +494,7 @@ class CapabilitiesConfig(pydantic.BaseModel):
       even considering them. Note that to enable ASK_QUESTION, it must be
       explicitly included in enabled_tools.
     compaction_threshold: (Deprecated) Configure
-      CompactionConfig(checkpoint_interval_tokens=...) directly on AgentConfig
-      instead.
+      CompactionConfig(token_threshold=...) directly on AgentConfig instead.
     finish_tool_schema_json: Optional JSON schema string for the finish tool.
     max_subagent_depth: Global maximum subagent recursion depth for the session.
       When None, defaults to 1 (flat single-level delegation).
@@ -515,8 +514,8 @@ class CapabilitiesConfig(pydantic.BaseModel):
       gt=0,
       deprecated=(
           "CapabilitiesConfig.compaction_threshold is deprecated. Configure"
-          " CompactionConfig(checkpoint_interval_tokens=...) directly on"
-          " AgentConfig instead."
+          " CompactionConfig(token_threshold=...) directly on AgentConfig"
+          " instead."
       ),
   )
   finish_tool_schema_json: str | None = None
@@ -596,7 +595,7 @@ class CapabilitiesConfig(pydantic.BaseModel):
     if self.compaction_threshold is not None:
       warnings.warn(
           "CapabilitiesConfig.compaction_threshold is deprecated. Configure"
-          " CompactionConfig(checkpoint_interval_tokens=...) directly on"
+          " CompactionConfig(token_threshold=...) directly on"
           " AgentConfig instead.",
           category=DeprecationWarning,
           stacklevel=2,
@@ -607,75 +606,15 @@ class CapabilitiesConfig(pydantic.BaseModel):
 class CompactionConfig(pydantic.BaseModel):
   """Configuration for conversation trajectory compaction and context limits.
 
-  Antigravity manages context using a two-stage sliding-window pipeline:
-  1. Background Checkpointing: A "checkpoint" is an asynchronous summary of the
-     conversation trajectory prepared in the background while the agent works.
-     Every checkpoint is cumulative, summarizing history up to that point.
-     Generating a checkpoint does not modify the active prompt or evict turns.
-  2. Prompt Eviction (Compaction): When active history reaches the token
-     ceiling (`max_context_tokens`), the context snaps back to the latest
-     completed checkpoint. Earlier checkpoints and turns preceding the latest
-     checkpoint are evicted from the prompt, while recent turns between the
-     latest checkpoint and the current turn are preserved verbatim with full
-     fidelity.
+  Antigravity manages context by compacting older conversation history when
+  the active trajectory exceeds `token_threshold`.
 
   Attributes:
-    checkpoint_interval_tokens: The token interval at which background
-      trajectory checkpoints (summaries) are pre-computed. Checkpoint generation
-      runs asynchronously and does not alter the active prompt. When None, the
-      framework's default cadence is used.
-    max_context_tokens: Maximum token ceiling allowed for the prompt before
-      older turns are evicted and replaced with the latest checkpoint summary.
-      When None, the framework's default limit is used.
-    compaction_threshold: Deprecated alias for `checkpoint_interval_tokens`.
+    token_threshold: Token ceiling allowed for the conversation history before
+      compaction occurs. When None, the backend's default limit is used.
   """
 
-  checkpoint_interval_tokens: int | None = pydantic.Field(default=None, gt=0)
-  max_context_tokens: int | None = pydantic.Field(default=None, gt=0)
-  compaction_threshold: int | None = pydantic.Field(
-      default=None,
-      gt=0,
-      deprecated=(
-          "CompactionConfig.compaction_threshold is deprecated. Use"
-          " checkpoint_interval_tokens instead."
-      ),
-  )
-
-  @pydantic.model_validator(mode="after")
-  def _validate_compaction_and_context_tokens(self) -> "CompactionConfig":
-    if (
-        self.checkpoint_interval_tokens is None
-        and self.compaction_threshold is not None
-    ):
-      self.__dict__["checkpoint_interval_tokens"] = self.compaction_threshold
-      self.__pydantic_fields_set__.add("checkpoint_interval_tokens")
-    elif (
-        self.checkpoint_interval_tokens is not None
-        and self.compaction_threshold is None
-    ):
-      self.__dict__["compaction_threshold"] = self.checkpoint_interval_tokens
-      self.__pydantic_fields_set__.add("compaction_threshold")
-    elif (
-        self.checkpoint_interval_tokens is not None
-        and self.compaction_threshold is not None
-        and self.checkpoint_interval_tokens != self.compaction_threshold
-    ):
-      raise ValueError(
-          "Conflicting values for aliased fields:"
-          f" checkpoint_interval_tokens={self.checkpoint_interval_tokens}"
-          f" vs compaction_threshold={self.compaction_threshold}"
-      )
-    interval = self.checkpoint_interval_tokens
-    if (
-        interval is not None
-        and self.max_context_tokens is not None
-        and interval > self.max_context_tokens
-    ):
-      raise ValueError(
-          f"checkpoint_interval_tokens ({interval}) cannot exceed"
-          f" max_context_tokens ({self.max_context_tokens})"
-      )
-    return self
+  token_threshold: int | None = pydantic.Field(default=None, gt=0)
 
 
 class ModelAPIRetryConfig(pydantic.BaseModel):

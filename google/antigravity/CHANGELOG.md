@@ -12,12 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This release introduces first-class context compaction controls and forward-looking budget scopes for fine-grained session control, adds arithmetic operator support to `UsageMetadata`, and enables tool output truncation for local agent connections. It also fixes nested policy evaluation in interactive REPL sessions and improves tool reflection and structured argument handling.
 
 ### 🌟 Key Highlights
-- **Context Compaction Configuration**: Configures cumulative background checkpointing and context window ceilings via `CompactionConfig` on `LocalAgentConfig` and connection configurations, replacing legacy threshold parameters.
+- **Context Compaction Configuration**: Configures synchronous context compaction via `CompactionConfig` on `LocalAgentConfig` and connection configurations, replacing legacy threshold parameters with a single `token_threshold` dial.
   ```python
   from antigravity import CompactionConfig, LocalAgentConfig
 
   config = LocalAgentConfig(
-      compaction_config=CompactionConfig(checkpoint_interval_tokens=20_000, max_context_tokens=65_536)
+      compaction_config=CompactionConfig(token_threshold=50_000)
   )
   ```
 - **Forward-Looking Budget Scopes**: Enables delta budget limits across resumed sessions using `BudgetScope.FORWARD_LOOKING`, restricting token usage and model invocations specifically to new turns rather than lifetime totals.

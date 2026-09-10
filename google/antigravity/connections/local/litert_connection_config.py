@@ -42,10 +42,10 @@ def derive_litert_compaction_config(
 ) -> types.CompactionConfig:
   """Derives the default compaction configuration for a LiteRT model.
 
-  Calculates a safe context ceiling and checkpoint interval based on the
-  engine's KV-cache capacity (`max_kv_cache_tokens`), per-turn generation limit
-  (`max_output_tokens`), and an 8192 token safety buffer to prevent engine
-  KV-cache overflow during generation.
+  Calculates a safe token threshold based on the engine's KV-cache capacity
+  (`max_kv_cache_tokens`), per-turn generation limit (`max_output_tokens`), and
+  an 8192 token safety buffer to prevent engine KV-cache overflow during
+  generation.
 
   Args:
     max_kv_cache_tokens: Maximum KV-cache capacity (in tokens) of the engine.
@@ -54,7 +54,7 @@ def derive_litert_compaction_config(
       _DEFAULT_MAX_OUTPUT_TOKENS (16384).
 
   Returns:
-    A CompactionConfig with derived token thresholds.
+    A CompactionConfig with derived token threshold.
 
   Raises:
     ValueError: If max_kv_cache_tokens <= 0 or max_output_tokens <= 0.
@@ -73,8 +73,7 @@ def derive_litert_compaction_config(
       max_kv_cache_tokens - max_output_tokens - _COMPACTION_BUFFER_TOKENS,
   )
   return types.CompactionConfig(
-      max_context_tokens=ceiling,
-      checkpoint_interval_tokens=ceiling,
+      token_threshold=ceiling,
   )
 
 

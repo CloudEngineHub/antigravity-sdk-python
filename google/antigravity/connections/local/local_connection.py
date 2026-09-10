@@ -112,18 +112,16 @@ def to_proto_compaction_config(
   if effective_compaction is None and capabilities is not None:
     if capabilities.compaction_threshold is not None:
       effective_compaction = types.CompactionConfig(
-          checkpoint_interval_tokens=capabilities.compaction_threshold,
+          token_threshold=capabilities.compaction_threshold,
       )
 
   if effective_compaction is None:
     return None, 0
 
   proto = localharness_pb2.CompactionConfig(
-      checkpoint_interval_tokens=effective_compaction.checkpoint_interval_tokens
-      or 0,
-      max_context_tokens=effective_compaction.max_context_tokens or 0,
+      token_threshold=effective_compaction.token_threshold or 0,
   )
-  legacy_threshold = effective_compaction.checkpoint_interval_tokens or 0
+  legacy_threshold = effective_compaction.token_threshold or 0
   return proto, legacy_threshold
 
 

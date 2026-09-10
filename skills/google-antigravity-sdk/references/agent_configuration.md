@@ -320,26 +320,22 @@ For a full guide and multi-turn stop reason handling examples, see [budget_limit
 
 ### Context Compaction & Token Limits (`compaction_config`)
 
-Antigravity manages conversation context using a two-stage sliding-window pipeline:
+Antigravity manages conversation context by compacting older conversation history when the active trajectory exceeds `token_threshold`.
 
-1. **Background Checkpointing**: A background model pre-computes cumulative trajectory summaries (checkpoints) at regular token intervals (`checkpoint_interval_tokens`). Checkpoint generation runs asynchronously and silently in parallel without modifying or truncating the active prompt.
-2. **Prompt Eviction (Compaction)**: When cumulative prompt tokens reach the context ceiling (`max_context_tokens`), the prompt snaps back to the latest completed checkpoint. Earlier checkpoints and older turns preceding the latest checkpoint are evicted from the prompt, while recent turns between the latest checkpoint and the current turn are preserved verbatim with full fidelity.
-
-You can configure both dials using `CompactionConfig`:
+You can configure this using `CompactionConfig`:
 
 ```python
 from google.antigravity import Agent, LocalAgentConfig, types
 
 config = LocalAgentConfig(
     compaction_config=types.CompactionConfig(
-        checkpoint_interval_tokens=40_000,
-        max_context_tokens=100_000,
+        token_threshold=50_000,
     ),
 )
 ```
 
 > [!NOTE]
-> When `compaction_config` is omitted (or fields are left unset), the backend's default cadence and context ceiling are used. If configuring custom values, `checkpoint_interval_tokens` cannot exceed `max_context_tokens`.
+> When `compaction_config` is omitted (or fields are left unset), the backend's default threshold is used.
 
 For a full guide and code examples, see [compaction.md](../../examples/getting_started/compaction.md).
 

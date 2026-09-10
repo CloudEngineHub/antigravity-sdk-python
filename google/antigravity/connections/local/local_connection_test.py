@@ -2461,7 +2461,7 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     config = strategy._build_harness_config()
     self.assertEqual(config.compaction_threshold, 50000)
     self.assertTrue(config.HasField("compaction_config"))
-    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 50000)
+    self.assertEqual(config.compaction_config.token_threshold, 50000)
 
   def test_capabilities_config_none_uses_defaults(self):
     """Verifies that capabilities_config=None produces default-enabled tools.
@@ -2499,14 +2499,13 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     """Verifies CompactionConfig maps to HarnessConfig.compaction_config."""
     strategy = self._make_strategy(
         compaction_config=types.CompactionConfig(
-            checkpoint_interval_tokens=40000, max_context_tokens=80000
+            token_threshold=40000
         )
     )
     config = strategy._build_harness_config()
     self.assertEqual(config.compaction_threshold, 40000)
     self.assertTrue(config.HasField("compaction_config"))
-    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 40000)
-    self.assertEqual(config.compaction_config.max_context_tokens, 80000)
+    self.assertEqual(config.compaction_config.token_threshold, 40000)
 
   def test_compaction_config_precedence_over_capabilities(self):
     """Verifies that compaction_config takes precedence over CapabilitiesConfig."""
@@ -2515,14 +2514,13 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
             compaction_threshold=50000
         ),
         compaction_config=types.CompactionConfig(
-            checkpoint_interval_tokens=30000, max_context_tokens=60000
+            token_threshold=30000
         ),
     )
     config = strategy._build_harness_config()
     self.assertEqual(config.compaction_threshold, 30000)
     self.assertTrue(config.HasField("compaction_config"))
-    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 30000)
-    self.assertEqual(config.compaction_config.max_context_tokens, 60000)
+    self.assertEqual(config.compaction_config.token_threshold, 30000)
 
   def test_cascade_id_passed_through(self):
     """Verifies that session_config.conversation_id maps to HarnessConfig.cascade_id.
@@ -5261,8 +5259,7 @@ class LocalAgentConfigTest(absltest.TestCase):
     self.assertEqual(
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
-    self.assertEqual(config.compaction_config.max_context_tokens, 65536)
-    self.assertIsNone(config.compaction_config.checkpoint_interval_tokens)
+    self.assertEqual(config.compaction_config.token_threshold, 65536)
     self.assertIsNone(config.capabilities.compaction_threshold)
     self.assertFalse(config.capabilities.enable_subagents)
 
@@ -5273,11 +5270,10 @@ class LocalAgentConfigTest(absltest.TestCase):
         harness_config.agent_behavior,
         localharness_pb2.AGENT_BEHAVIOR_MINIMAL,
     )
-    self.assertEqual(harness_config.compaction_threshold, 0)
+    self.assertEqual(harness_config.compaction_threshold, 65536)
     self.assertEqual(
-        harness_config.compaction_config.checkpoint_interval_tokens, 0
+        harness_config.compaction_config.token_threshold, 65536
     )
-    self.assertEqual(harness_config.compaction_config.max_context_tokens, 65536)
     self.assertFalse(harness_config.harness_side_tools.subagents.enabled)
     self.assertTrue(harness_config.harness_side_tools.run_command.enabled)
     self.assertTrue(harness_config.harness_side_tools.view_file.enabled)
@@ -5309,8 +5305,7 @@ class LocalAgentConfigTest(absltest.TestCase):
 
   def test_lightweight_method_preserves_explicit_compaction_config(self):
     custom_compaction = types.CompactionConfig(
-        checkpoint_interval_tokens=12345,
-        max_context_tokens=23456,
+        token_threshold=12345,
     )
     config = local_connection_config.LocalAgentConfig(
         model="gemini-3.8-flash",
@@ -5321,9 +5316,8 @@ class LocalAgentConfigTest(absltest.TestCase):
     harness_config = strategy._build_harness_config()
     self.assertEqual(harness_config.compaction_threshold, 12345)
     self.assertEqual(
-        harness_config.compaction_config.checkpoint_interval_tokens, 12345
+        harness_config.compaction_config.token_threshold, 12345
     )
-    self.assertEqual(harness_config.compaction_config.max_context_tokens, 23456)
 
   def test_safe_defaults_with_default_workspace(self):
     """LocalAgentConfig defaults to CWD workspace when not specified."""

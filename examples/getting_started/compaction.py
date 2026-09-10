@@ -14,8 +14,8 @@
 
 """Conversation compaction and context limits example for Google Antigravity SDK.
 
-This example demonstrates how to configure background trajectory checkpointing
-and maximum context token ceilings using CompactionConfig.
+This example demonstrates how to configure conversation history compaction
+thresholds using CompactionConfig.
 
 To run:
   python compaction.py
@@ -31,11 +31,7 @@ from google.antigravity import types
 async def main() -> None:
   config = LocalAgentConfig(
       compaction_config=types.CompactionConfig(
-          # Interval at which background checkpoints (summaries) are prepared.
-          checkpoint_interval_tokens=40_000,
-          # Maximum context window ceiling before older turns are evicted and
-          # replaced by the latest background checkpoint.
-          max_context_tokens=100_000,
+          token_threshold=50_000,
       ),
   )
 

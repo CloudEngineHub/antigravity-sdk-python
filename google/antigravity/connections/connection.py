@@ -114,13 +114,13 @@ class AgentConfig(abc.ABC, pydantic.BaseModel):
     ):
       warnings.warn(
           "CapabilitiesConfig.compaction_threshold is deprecated. Configure"
-          " CompactionConfig(checkpoint_interval_tokens=...) directly on"
+          " CompactionConfig(token_threshold=...) directly on"
           " AgentConfig instead.",
           category=DeprecationWarning,
           stacklevel=2,
       )
       return types.CompactionConfig(
-          checkpoint_interval_tokens=self.capabilities.compaction_threshold,
+          token_threshold=self.capabilities.compaction_threshold,
       )
     return None
 
@@ -262,7 +262,7 @@ class AgentConfig(abc.ABC, pydantic.BaseModel):
 
   def _default_compaction_config(self) -> types.CompactionConfig | None:
     """Returns the default compaction configuration for lightweight preset."""
-    return types.CompactionConfig(max_context_tokens=65536)
+    return types.CompactionConfig(token_threshold=65536)
 
   def lightweight(self: Self) -> Self:
     """Returns a copy of this configuration with lightweight presets applied."""

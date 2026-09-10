@@ -224,8 +224,7 @@ class AgentConfigTest(unittest.TestCase):
     )
     self.assertFalse(config.capabilities.enable_subagents)
     self.assertIsNotNone(config.compaction_config)
-    self.assertEqual(config.compaction_config.max_context_tokens, 65536)
-    self.assertIsNone(config.compaction_config.checkpoint_interval_tokens)
+    self.assertEqual(config.compaction_config.token_threshold, 65536)
 
   def test_lightweight_method_preserves_explicit_compaction_config(self):
     class ConcreteConfig(connection.AgentConfig):
@@ -234,14 +233,12 @@ class AgentConfigTest(unittest.TestCase):
         return None
 
     user_compaction = types.CompactionConfig(
-        checkpoint_interval_tokens=12345,
-        max_context_tokens=23456,
+        token_threshold=12345,
     )
     config = ConcreteConfig(
         compaction_config=user_compaction,
     ).lightweight()
-    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 12345)
-    self.assertEqual(config.compaction_config.max_context_tokens, 23456)
+    self.assertEqual(config.compaction_config.token_threshold, 12345)
 
   def test_lightweight_method_merges_with_custom_capabilities(self):
     class ConcreteConfig(connection.AgentConfig):

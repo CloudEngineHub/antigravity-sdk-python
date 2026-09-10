@@ -112,8 +112,7 @@ class LocalOpenAIConnectionTest(unittest.TestCase):
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
     self.assertIsNotNone(config.compaction_config)
-    self.assertEqual(config.compaction_config.max_context_tokens, 65536)
-    self.assertIsNone(config.compaction_config.checkpoint_interval_tokens)
+    self.assertEqual(config.compaction_config.token_threshold, 65536)
     self.assertIsNone(config.capabilities.compaction_threshold)
     self.assertFalse(config.capabilities.enable_subagents)
 
@@ -122,16 +121,14 @@ class LocalOpenAIConnectionTest(unittest.TestCase):
   ):
     """Verify LocalOpenAIAgentConfig.lightweight preserves explicit compaction_config."""
     user_compaction = types.CompactionConfig(
-        checkpoint_interval_tokens=20000,
-        max_context_tokens=40000,
+        token_threshold=20000,
     )
     config = local_openai_connection_config.LocalOpenAIAgentConfig(
         base_url="http://localhost:11434/v1",
         model="llama3.1",
         compaction_config=user_compaction,
     ).lightweight()
-    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 20000)
-    self.assertEqual(config.compaction_config.max_context_tokens, 40000)
+    self.assertEqual(config.compaction_config.token_threshold, 20000)
 
   def test_local_openai_config_lightweight_method_with_overrides(self):
     """Verify LocalOpenAIAgentConfig.lightweight respects capability overrides."""

@@ -356,20 +356,16 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         model_path="/tmp/model.litertlm",
         backend=litert_connection_config.LiteRTBackend.CPU,
         compaction_config=types.CompactionConfig(
-            max_context_tokens=12345, checkpoint_interval_tokens=12345
+            token_threshold=12345,
         ),
     )
-    self.assertEqual(config.compaction_config.max_context_tokens, 12345)
-    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 12345)
+    self.assertEqual(config.compaction_config.token_threshold, 12345)
     strategy = config.create_strategy(
         tool_runner=mock.MagicMock(),
         hook_runner=mock.MagicMock(),
     )
     self.assertEqual(strategy._max_kv_cache_tokens, 65536)
-    self.assertEqual(strategy._compaction_config.max_context_tokens, 12345)
-    self.assertEqual(
-        strategy._compaction_config.checkpoint_interval_tokens, 12345
-    )
+    self.assertEqual(strategy._compaction_config.token_threshold, 12345)
 
   @mock.patch("os.path.exists")
   def test_litert_config_tool_output_truncation_config(self, mock_exists):
@@ -424,8 +420,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         config.capabilities.enabled_tools, types.BuiltinTools.minimal()
     )
     self.assertIsNotNone(config.compaction_config)
-    self.assertEqual(config.compaction_config.max_context_tokens, 40960)
-    self.assertEqual(config.compaction_config.checkpoint_interval_tokens, 40960)
+    self.assertEqual(config.compaction_config.token_threshold, 40960)
     self.assertIsNone(config.capabilities.compaction_threshold)
     self.assertFalse(config.capabilities.enable_subagents)
 
@@ -434,10 +429,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         hook_runner=mock.MagicMock(),
     )
     self.assertEqual(strategy._max_kv_cache_tokens, 65536)
-    self.assertEqual(strategy._compaction_config.max_context_tokens, 40960)
-    self.assertEqual(
-        strategy._compaction_config.checkpoint_interval_tokens, 40960
-    )
+    self.assertEqual(strategy._compaction_config.token_threshold, 40960)
 
   def test_litert_config_lightweight_method_with_overrides(self):
     """Verify LiteRTAgentConfig.lightweight respects capability overrides."""
@@ -462,8 +454,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
   ):
     """Verify explicit compaction_config takes priority over lightweight preset."""
     custom_compaction = types.CompactionConfig(
-        checkpoint_interval_tokens=10000,
-        max_context_tokens=20000,
+        token_threshold=10000,
     )
     config = litert_connection_config.LiteRTAgentConfig(
         model_path="/tmp/model.litertlm",
@@ -476,9 +467,8 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
         hook_runner=mock.MagicMock(),
     )
     self.assertEqual(
-        strategy._compaction_config.checkpoint_interval_tokens, 10000
+        strategy._compaction_config.token_threshold, 10000
     )
-    self.assertEqual(strategy._compaction_config.max_context_tokens, 20000)
 
   def test_litert_config_kv_cache_tokens_defaults(self):
     """Verify LiteRTAgentConfig defaults for KV cache tokens and derived compaction."""
@@ -494,10 +484,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(strategy._max_kv_cache_tokens, 65536)
     self.assertEqual(strategy._max_output_tokens, 16384)
     self.assertEqual(strategy._thinking_token_budget, 8192)
-    self.assertEqual(strategy._compaction_config.max_context_tokens, 40960)
-    self.assertEqual(
-        strategy._compaction_config.checkpoint_interval_tokens, 40960
-    )
+    self.assertEqual(strategy._compaction_config.token_threshold, 40960)
 
   @mock.patch("os.path.exists")
   @mock.patch("subprocess.Popen")
@@ -718,8 +705,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     config = litert_connection_config.LiteRTAgentConfig(
         model_path="/dummy/path.litertlm",
         compaction_config=types.CompactionConfig(
-            max_context_tokens=21424,
-            checkpoint_interval_tokens=12854,
+            token_threshold=21424,
         ),
     )
     strategy = config.create_strategy(
@@ -762,10 +748,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
       self.assertIn("max_num_tokens", kwargs)
       self.assertNotIn("max_context_tokens", kwargs)
       self.assertEqual(kwargs["max_num_tokens"], 65536)
-      self.assertEqual(strategy._compaction_config.max_context_tokens, 21424)
-      self.assertEqual(
-          strategy._compaction_config.checkpoint_interval_tokens, 12854
-      )
+      self.assertEqual(strategy._compaction_config.token_threshold, 21424)
 
   async def test_litert_engine_lightweight_decoupled_limits(self):
     """Verify lightweight preset passes max_kv_cache_tokens to Engine while deriving compaction."""
@@ -811,10 +794,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
       _, kwargs = mock_engine_cls.call_args
       self.assertEqual(kwargs["max_num_tokens"], 65536)
       self.assertEqual(strategy._max_kv_cache_tokens, 65536)
-      self.assertEqual(strategy._compaction_config.max_context_tokens, 40960)
-      self.assertEqual(
-          strategy._compaction_config.checkpoint_interval_tokens, 40960
-      )
+      self.assertEqual(strategy._compaction_config.token_threshold, 40960)
 
   def test_litert_config_mcp_servers_and_subagents_passed_to_strategy(self):
     """Verify LiteRTAgentConfig passes mcp_servers and subagents to strategy."""
@@ -902,7 +882,7 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     """Verify warmup timeout scaling and engine lock wait on timeout."""
     config = litert_connection_config.LiteRTAgentConfig(
         model_path="/dummy/path.litertlm",
-        compaction_config=types.CompactionConfig(max_context_tokens=65536),
+        compaction_config=types.CompactionConfig(token_threshold=65536),
     )
     strategy = config.create_strategy(
         tool_runner=mock.MagicMock(),
@@ -1186,14 +1166,12 @@ class DeriveLiteRTCompactionConfigTest(unittest.TestCase):
   def test_derive_default_tokens(self):
     """Verify ceiling and interval derivation with standard defaults."""
     config = litert_connection_config.derive_litert_compaction_config()
-    self.assertEqual(config.max_context_tokens, 40960)
-    self.assertEqual(config.checkpoint_interval_tokens, 40960)
+    self.assertEqual(config.token_threshold, 40960)
 
     config_explicit = litert_connection_config.derive_litert_compaction_config(
         max_kv_cache_tokens=65536,
     )
-    self.assertEqual(config_explicit.max_context_tokens, 40960)
-    self.assertEqual(config_explicit.checkpoint_interval_tokens, 40960)
+    self.assertEqual(config_explicit.token_threshold, 40960)
 
   def test_derive_custom_tokens(self):
     """Verify ceiling and interval derivation with custom parameters."""
@@ -1201,8 +1179,7 @@ class DeriveLiteRTCompactionConfigTest(unittest.TestCase):
         max_kv_cache_tokens=32768,
         max_output_tokens=8192,
     )
-    self.assertEqual(config.max_context_tokens, 16384)
-    self.assertEqual(config.checkpoint_interval_tokens, 16384)
+    self.assertEqual(config.token_threshold, 16384)
 
   def test_derive_floor_clamp(self):
     """Verify context ceiling is clamped to at least 1024 tokens."""
@@ -1210,15 +1187,13 @@ class DeriveLiteRTCompactionConfigTest(unittest.TestCase):
         max_kv_cache_tokens=10000,
         max_output_tokens=5000,
     )
-    self.assertEqual(config.max_context_tokens, 1024)
-    self.assertEqual(config.checkpoint_interval_tokens, 1024)
+    self.assertEqual(config.token_threshold, 1024)
 
     config = litert_connection_config.derive_litert_compaction_config(
         max_kv_cache_tokens=2048,
         max_output_tokens=2048,
     )
-    self.assertEqual(config.max_context_tokens, 1024)
-    self.assertEqual(config.checkpoint_interval_tokens, 1024)
+    self.assertEqual(config.token_threshold, 1024)
 
   def test_derive_non_positive_kv_cache_tokens_raises(self):
     """Verify ValueError is raised if max_kv_cache_tokens <= 0."""
