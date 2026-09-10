@@ -129,6 +129,7 @@ declare -A PLATFORM_TAGS=(
   ["linux-x86_64"]="manylinux_2_17_x86_64.musllinux_1_1_x86_64"
   ["linux-arm64"]="manylinux_2_17_aarch64.musllinux_1_1_aarch64"
   ["darwin-arm64"]="macosx_11_0_arm64"
+  ["darwin-x86_64"]="macosx_11_0_x86_64"
   ["windows-x86_64"]="win_amd64"
   ["windows-arm64"]="win_arm64"
 )
@@ -144,6 +145,7 @@ if [[ -z "${PUBLISH_PREBUILT_VERSION:-}" ]]; then
     ["linux-x86_64"]="localharness_linux_x86_64"
     ["linux-arm64"]="localharness_linux_arm64"
     ["darwin-arm64"]="localharness_darwin_arm64"
+    ["darwin-x86_64"]="localharness_darwin_x86_64"
     ["windows-x86_64"]="localharness_windows_x86_64"
     ["windows-arm64"]="localharness_windows_arm64"
   )
