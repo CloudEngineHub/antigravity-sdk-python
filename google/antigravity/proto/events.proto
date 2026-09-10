@@ -16,6 +16,7 @@ edition = "2024";
 
 package genai;
 
+import "google/rpc/status.proto";
 import "google/antigravity/proto/agents.proto";
 import "google/antigravity/proto/content.proto";
 import "google/antigravity/proto/environment.proto";
@@ -33,6 +34,11 @@ message ClientEventBatch {
   oneof connect_request {
     .genai.CreateInteractionEvent create_interaction = 7;
   }
+  oneof end_request {
+    .genai.CompleteInteractionEvent complete_interaction = 5;
+    .genai.CancelInteractionEvent cancel_interaction = 6;
+    .genai.DisconnectEvent disconnect = 9;
+  }
   repeated .genai.ClientEvent events = 1;
   int64 ack_output_seq_num = 2;
 }
@@ -48,6 +54,9 @@ message ClientEvent {
 message ServerEventBatch {
   oneof connect_reply {
     .genai.InteractionCreatedEvent interaction_created = 7;
+  }
+  oneof end_signal {
+    .genai.InteractionCompletedEvent interaction_completed = 6;
   }
   repeated .genai.ServerEvent events = 1;
   int64 ack_input_seq_num = 2;
@@ -133,6 +142,15 @@ message InteractionCreatedEvent {
   string interaction_id = 1;
   repeated .genai.SkillDeclaration available_skills = 2;
   repeated .genai.SlashCommandDeclaration available_slash_commands = 3;
+}
+message CompleteInteractionEvent {}
+message CancelInteractionEvent {}
+message DisconnectEvent {}
+message InteractionCompletedEvent {
+  .google.rpc.Status status = 1;
+  string created = 2;
+  string updated = 3;
+  extensions 1000 to max;
 }
 message Payload {
   oneof event_type {
