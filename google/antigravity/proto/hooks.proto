@@ -18,6 +18,7 @@ package genai;
 
 import "google/antigravity/proto/agents.proto";
 import "google/antigravity/proto/content.proto";
+import "google/antigravity/proto/state_update.proto";
 import "google/antigravity/proto/steps.proto";
 
 option features = { field_presence : IMPLICIT enum_type : OPEN utf8_validation : NONE };
@@ -29,6 +30,8 @@ message CallHookRequest {
     .genai.PreToolArgs pre_tool_args = 5;
     .genai.PostToolArgs post_tool_args = 6;
     .genai.OnToolErrorArgs on_tool_error_args = 8;
+    .genai.OnCompactionArgs on_compaction_args = 9;
+    .genai.StopArgs stop_args = 10;
   }
   string request_id = 1;
   string name = 2;
@@ -41,6 +44,7 @@ message CallHookResponse {
     .genai.EmptyResult empty_result = 4;
     string error_message = 5;
     .genai.OnToolErrorResult on_tool_error_result = 6;
+    .genai.StopResult stop_result = 7;
   }
   string request_id = 1;
 }
@@ -87,5 +91,26 @@ message PreTurnResult {
     DENY = 2;
   }
   .genai.PreTurnResult.Decision decision = 1;
+  string reason = 2;
+}
+message OnCompactionArgs {
+  string interaction_id = 1;
+  uint32 step_index = 2;
+  string summary = 3;
+}
+message StopArgs {
+  string response_text = 1;
+  string interaction_id = 2;
+  int32 continuation_count = 3;
+  .genai.StopReason stop_reason = 4;
+  string error_message = 5;
+}
+message StopResult {
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    ALLOW_STOP = 1;
+    CONTINUE = 2;
+  }
+  .genai.StopResult.Decision decision = 1;
   string reason = 2;
 }

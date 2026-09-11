@@ -188,6 +188,8 @@ message AntigravityAgentConfig {
     LIFECYCLE_HOOK_PRE_TOOL = 5;
     LIFECYCLE_HOOK_POST_TOOL = 6;
     LIFECYCLE_HOOK_ON_TOOL_ERROR = 7;
+    LIFECYCLE_HOOK_ON_COMPACTION = 8;
+    LIFECYCLE_HOOK_STOP = 9;
   }
   oneof model_config {
     string model = 1;
