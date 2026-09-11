@@ -260,48 +260,82 @@ class AgentConfig(abc.ABC, pydantic.BaseModel):
             tools.append(tool)
     return tools
 
-  def _default_compaction_config(self) -> types.CompactionConfig | None:
+  @classmethod
+  def _default_compaction_config(cls) -> types.CompactionConfig | None:
     """Returns the default compaction configuration for lightweight preset."""
     return types.CompactionConfig(token_threshold=65536)
 
-  def lightweight(self: Self) -> Self:
-    """Returns a copy of this configuration with lightweight presets applied."""
+  @classmethod
+  def _compute_lightweight_presets(
+      cls,
+      data: Mapping[str, Any] | None = None,
+  ) -> dict[str, Any]:
+    """Computes lightweight preset updates, preserving caller-provided overrides.
+
+    Args:
+      data: Optional mapping of field names to values that were explicitly
+        configured by the caller or present on the instance.
+
+    Returns:
+      A dictionary of field updates (e.g. 'capabilities', 'compaction_config')
+      with lightweight defaults applied.
+    """
+    data = data or {}
     preset_kwargs = {
         "enabled_tools": types.BuiltinTools.minimal(),
         "agent_behavior": types.AgentBehavior.MINIMAL,
         "enable_subagents": False,
     }
-    if (
-        "capabilities" in self.model_fields_set
-        and self.capabilities is not None
-    ):
-      user_caps = self.capabilities.model_dump(exclude_unset=True)
-      if "disabled_tools" in user_caps and "enabled_tools" not in user_caps:
-        disabled = set(self.capabilities.disabled_tools or [])
+    user_caps = data.get("capabilities")
+    user_caps_dict = {}
+    if user_caps is not None:
+      user_caps_dict = (
+          user_caps.model_dump(exclude_unset=True)
+          if hasattr(user_caps, "model_dump")
+          else dict(user_caps)
+          if isinstance(user_caps, Mapping)
+          else {}
+      )
+      if (
+          "disabled_tools" in user_caps_dict
+          and "enabled_tools" not in user_caps_dict
+      ):
+        disabled = set(user_caps_dict.get("disabled_tools") or [])
         preset_kwargs["enabled_tools"] = [
             t for t in types.BuiltinTools.minimal() if t not in disabled
         ]
-        user_caps.pop("disabled_tools", None)
-      preset_kwargs.update(user_caps)
-    new_capabilities = types.CapabilitiesConfig(**preset_kwargs)
-    updates: dict[str, Any] = {"capabilities": new_capabilities}
+        user_caps_dict.pop("disabled_tools", None)
+      preset_kwargs.update(user_caps_dict)
+
+    updates: dict[str, Any] = {
+        "capabilities": types.CapabilitiesConfig(**preset_kwargs)
+    }
+
     # Compaction preset is only applied if the caller has not explicitly
     # configured a compaction policy:
     # 1. Modern API: caller explicitly passed a non-None `compaction_config`
-    #    (tracked via `model_fields_set` to distinguish explicit values).
+    #    (tracked via `model_fields_set` or present in `data`).
     # 2. Legacy API: caller explicitly configured compaction threshold via
     #    `capabilities.compaction_threshold`.
     has_explicit_compaction = (
-        "compaction_config" in self.model_fields_set
-        and self.compaction_config is not None
-    ) or (
-        self.capabilities is not None
-        and self.capabilities.compaction_threshold is not None
+        data.get("compaction_config") is not None
+        or (user_caps_dict.get("compaction_threshold") is not None)
     )
     if not has_explicit_compaction:
-      default_compaction = self._default_compaction_config()
+      default_compaction = cls._default_compaction_config()
       if default_compaction is not None:
         updates["compaction_config"] = default_compaction
+
+    return updates
+
+  def lightweight(self: Self) -> Self:
+    """Returns a copy of this configuration with lightweight presets applied."""
+    user_explicit = {
+        field: getattr(self, field)
+        for field in self.model_fields_set
+        if getattr(self, field) is not None
+    }
+    updates = self._compute_lightweight_presets(user_explicit)
     return cast(Self, self.model_copy(update=updates))
 
   @abc.abstractmethod

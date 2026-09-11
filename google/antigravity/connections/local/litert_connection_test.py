@@ -397,12 +397,19 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(h_cfg.tool_output_truncation.truncate.max_tokens, 1024)
 
   def test_litert_config_default_capabilities(self):
-    """Verify LiteRTAgentConfig defaults to all capabilities enabled."""
+    """Verify LiteRTAgentConfig defaults to lightweight preset automatically."""
     litert_config = litert_connection_config.LiteRTAgentConfig(
         model_path="/tmp/model.litertlm",
     )
-    self.assertIsNone(litert_config.capabilities.enabled_tools)
-    self.assertIsNone(litert_config.capabilities.disabled_tools)
+    self.assertEqual(
+        litert_config.capabilities.enabled_tools, types.BuiltinTools.minimal()
+    )
+    self.assertEqual(
+        litert_config.capabilities.agent_behavior, types.AgentBehavior.MINIMAL
+    )
+    self.assertFalse(litert_config.capabilities.enable_subagents)
+    self.assertIsNotNone(litert_config.compaction_config)
+    self.assertEqual(litert_config.compaction_config.token_threshold, 40960)
 
   def test_litert_config_lightweight_method(self):
     """Verify LiteRTAgentConfig.lightweight returns LiteRTAgentConfig with defaults."""
@@ -449,6 +456,38 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     )
     self.assertFalse(config.capabilities.enable_subagents)
 
+  def test_litert_config_constructor_with_capability_overrides(self):
+    """Verify LiteRTAgentConfig constructor auto-applies lightweight preset with overrides."""
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+        capabilities=types.CapabilitiesConfig(compaction_threshold=3000),
+    )
+    self.assertIsInstance(config, litert_connection_config.LiteRTAgentConfig)
+    self.assertEqual(config.capabilities.compaction_threshold, 3000)
+    self.assertIsNone(config.compaction_config)
+    self.assertEqual(
+        config.capabilities.agent_behavior, types.AgentBehavior.MINIMAL
+    )
+    self.assertEqual(
+        config.capabilities.enabled_tools, types.BuiltinTools.minimal()
+    )
+    self.assertFalse(config.capabilities.enable_subagents)
+
+  def test_litert_config_constructor_equals_lightweight_method(self):
+    """Verify LiteRTAgentConfig(...) produces identical configuration to LiteRTAgentConfig(...).lightweight()."""
+    config1 = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    config2 = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    ).lightweight()
+    self.assertEqual(config1.capabilities, config2.capabilities)
+    self.assertEqual(config1.compaction_config, config2.compaction_config)
+    self.assertEqual(config1.model_dump(), config2.model_dump())
+
   def test_litert_config_lightweight_method_preserves_explicit_compaction_config(
       self,
   ):
@@ -475,7 +514,8 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     config = litert_connection_config.LiteRTAgentConfig(
         model_path="/tmp/model.litertlm",
     )
-    self.assertIsNone(config.compaction_config)
+    self.assertIsNotNone(config.compaction_config)
+    self.assertEqual(config.compaction_config.token_threshold, 40960)
 
     strategy = config.create_strategy(
         tool_runner=mock.MagicMock(),

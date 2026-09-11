@@ -330,6 +330,52 @@ class AgentConfigTest(unittest.TestCase):
     )
     self.assertIsNone(config.capabilities.disabled_tools)
 
+  def test_compute_lightweight_presets_classmethod(self):
+    class ConcreteConfig(connection.AgentConfig):
+
+      def create_strategy(self, *, tool_runner, hook_runner):
+        return None
+
+    presets = ConcreteConfig._compute_lightweight_presets()
+    self.assertIn("capabilities", presets)
+    self.assertEqual(
+        presets["capabilities"].enabled_tools, types.BuiltinTools.minimal()
+    )
+    self.assertEqual(
+        presets["capabilities"].agent_behavior, types.AgentBehavior.MINIMAL
+    )
+    self.assertFalse(presets["capabilities"].enable_subagents)
+    self.assertIn("compaction_config", presets)
+    self.assertEqual(presets["compaction_config"].token_threshold, 65536)
+
+  def test_compute_lightweight_presets_with_dict_capabilities(self):
+    class ConcreteConfig(connection.AgentConfig):
+
+      def create_strategy(self, *, tool_runner, hook_runner):
+        return None
+
+    presets = ConcreteConfig._compute_lightweight_presets({
+        "capabilities": {"disabled_tools": [types.BuiltinTools.RUN_COMMAND]}
+    })
+    self.assertNotIn(
+        types.BuiltinTools.RUN_COMMAND, presets["capabilities"].enabled_tools
+    )
+    self.assertIn(
+        types.BuiltinTools.VIEW_FILE, presets["capabilities"].enabled_tools
+    )
+
+  def test_compute_lightweight_presets_with_dict_compaction_threshold(self):
+    class ConcreteConfig(connection.AgentConfig):
+
+      def create_strategy(self, *, tool_runner, hook_runner):
+        return None
+
+    presets = ConcreteConfig._compute_lightweight_presets({
+        "capabilities": {"compaction_threshold": 3000}
+    })
+    self.assertEqual(presets["capabilities"].compaction_threshold, 3000)
+    self.assertNotIn("compaction_config", presets)
+
 
 class ResolveActiveToolsTest(unittest.TestCase):
   """Tests for resolve_active_tools helper."""

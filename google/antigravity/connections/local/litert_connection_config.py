@@ -77,6 +77,7 @@ def derive_litert_compaction_config(
   )
 
 
+
 class LiteRTBackend(str, enum.Enum):
   CPU = "cpu"
   GPU = "gpu"
@@ -157,22 +158,15 @@ class LiteRTAgentConfig(BaseLocalAgentConfig):
     if isinstance(vision_backend, str):
       vision_backend = LiteRTBackend(vision_backend.lower())
 
-    if capabilities is None:
-      capabilities = types.CapabilitiesConfig(
-          file_reads=True,
-          file_writes=True,
-          command_execution=True,
-          subagents=True,
-          mcp=True,
-      )
-
     init_data = {
-        k: v for k, v in locals().items() if k != "self" and v is not None
+        k: v
+        for k, v in locals().items()
+        if k not in ("self", "kwargs") and v is not None
     }
-    if "kwargs" in init_data:
-      kwargs_dict = init_data.pop("kwargs")
-      if isinstance(kwargs_dict, dict):
-        init_data.update(kwargs_dict)
+    if kwargs:
+      init_data.update(kwargs)
+
+    init_data.update(self._compute_lightweight_presets(init_data))
     pydantic.BaseModel.__init__(self, **init_data)
 
   def create_strategy(
@@ -218,6 +212,7 @@ class LiteRTAgentConfig(BaseLocalAgentConfig):
         retry_config=self.retry_config,
     )
 
-  def _default_compaction_config(self) -> types.CompactionConfig | None:
+  @classmethod
+  def _default_compaction_config(cls) -> types.CompactionConfig | None:
     """Returns the LiteRT-specific compaction configuration for lightweight preset."""
     return derive_litert_compaction_config()
