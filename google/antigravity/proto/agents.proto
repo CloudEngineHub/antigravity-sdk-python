@@ -170,6 +170,25 @@ message AntigravityAgentConfig {
   message ModelOutputRetryConfig {
     uint32 max_retries = 1;
   }
+  message PolicyRule {
+    string tool = 1;
+    string server_name = 2;
+    string name = 3;
+    .genai.AntigravityAgentConfig.PolicyDecision decision = 4;
+    string deny_reason = 5;
+    bool is_dynamic = 6;
+    string rule_id = 7;
+  }
+  message PolicyConfig {
+    enum WorkspaceContainment {
+      WORKSPACE_CONTAINMENT_UNSPECIFIED = 0;
+      WORKSPACE_CONTAINMENT_ENABLED = 1;
+      WORKSPACE_CONTAINMENT_DISABLED = 2;
+    }
+    repeated .genai.AntigravityAgentConfig.PolicyRule rules = 1;
+    .genai.AntigravityAgentConfig.PolicyConfig.WorkspaceContainment
+        workspace_containment = 2;
+  }
   message RetryConfig {
     .genai.AntigravityAgentConfig.ModelAPIRetryConfig api_retry = 1;
     .genai.AntigravityAgentConfig.ModelOutputRetryConfig model_output_retry = 2;
@@ -191,6 +210,12 @@ message AntigravityAgentConfig {
     LIFECYCLE_HOOK_ON_COMPACTION = 8;
     LIFECYCLE_HOOK_STOP = 9;
   }
+  enum PolicyDecision {
+    POLICY_DECISION_UNSPECIFIED = 0;
+    POLICY_DECISION_ALLOW = 1;
+    POLICY_DECISION_DENY = 2;
+    POLICY_DECISION_ASK_USER = 3;
+  }
   oneof model_config {
     string model = 1;
     .genai.AntigravityAgentConfig.Models models = 18;
@@ -211,6 +236,7 @@ message AntigravityAgentConfig {
   .genai.AntigravityAgentConfig.ToolOutputTruncation tool_output_truncation =
       20;
   .genai.AntigravityAgentConfig.RetryConfig retry_config = 21;
+  .genai.AntigravityAgentConfig.PolicyConfig policy_config = 22;
 }
 message AgentPolicy {
   bool enable_image_generation = 1;
