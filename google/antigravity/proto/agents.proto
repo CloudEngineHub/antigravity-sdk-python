@@ -124,6 +124,21 @@ message AntigravityAgentConfig {
     int32 token_threshold = 1;
   }
   message AntigravitySubagentsConfig {
+    message AllowedSubagents {
+      message Disabled {}
+      message All {}
+      message Enumerated {
+        repeated string names = 1;
+      }
+      oneof allowed_subagents {
+        .genai.AntigravityAgentConfig.AntigravitySubagentsConfig
+            .AllowedSubagents.Disabled disabled = 1;
+        .genai.AntigravityAgentConfig.AntigravitySubagentsConfig
+            .AllowedSubagents.All all = 2;
+        .genai.AntigravityAgentConfig.AntigravitySubagentsConfig
+            .AllowedSubagents.Enumerated enumerated = 3;
+      }
+    }
     message CustomAgent {
       string name = 1;
       string description = 2;
@@ -133,9 +148,15 @@ message AntigravityAgentConfig {
       repeated .genai.Tool tools = 6;
       .genai.SubagentSkillsConfig skills_config = 7;
       .genai.AgentBehavior agent_behavior = 8;
+      .genai.AgentPolicy policy = 9;
+      .genai.AntigravityAgentConfig.AntigravitySubagentsConfig.AllowedSubagents
+          allowed_subagents = 10;
     }
     repeated .genai.AntigravityAgentConfig.AntigravitySubagentsConfig
         .CustomAgent custom_subagents = 1;
+    int32 max_nesting_depth = 2;
+    .genai.AntigravityAgentConfig.AntigravitySubagentsConfig.AllowedSubagents
+        allowed_subagents = 3;
   }
   message Workspace {
     oneof workspace_type {

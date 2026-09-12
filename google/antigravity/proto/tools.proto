@@ -42,6 +42,8 @@ message Tool {
     .genai.FilesystemTool filesystem = 10;
     .genai.BashTool bash = 11;
     .genai.ToolSearch tool_search = 28;
+    .genai.ManageTaskTool manage_task = 29;
+    .genai.ScheduleTool schedule = 30;
   }
 }
 message ToolSearch {
@@ -129,4 +131,10 @@ message FilesystemTool {
   }
   repeated .genai.FilesystemTool.Operation supported_operations = 1;
 }
-message BashTool {}
+message BashTool {
+  int32 max_timeout_ms = 1;
+  bool enable_daemon_commands = 2;
+  bool enable_sandbox = 3;
+}
+message ManageTaskTool {}
+message ScheduleTool {}
