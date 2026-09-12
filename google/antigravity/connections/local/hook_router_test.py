@@ -963,16 +963,10 @@ class HookRouterPreToolTest(absltest.TestCase):
       self.assertEqual(resp.request_id, "test_pre_modify")
       self.assertTrue(resp.HasField("pre_tool_result"))
       self.assertTrue(resp.pre_tool_result.HasField("modified_args"))
-      self.assertEqual(
-          resp.pre_tool_result.modified_args.fields[0].name, "cmd"
-      )
+      self.assertEqual(resp.pre_tool_result.modified_args.fields[0].name, "cmd")
       self.assertEqual(
           resp.pre_tool_result.modified_args.fields[0].value.string_value,
           "echo 'sanitized'",
-      )
-      self.assertEqual(
-          resp.pre_tool_result.modified_arguments_json,
-          json.dumps({"cmd": "echo 'sanitized'"}),
       )
 
     asyncio.run(_test())
@@ -1016,7 +1010,7 @@ class HookRouterPreToolTest(absltest.TestCase):
           ),
       )
 
-      # Must not raise TypeError from json.dumps.
+      # Must handle custom/rich objects in modified_args cleanly without error.
       await router.handle(req)
 
       self.assertLen(sent_events, 1)
@@ -1024,9 +1018,11 @@ class HookRouterPreToolTest(absltest.TestCase):
       self.assertEqual(resp.request_id, "test_pre_modify_custom")
       self.assertTrue(resp.HasField("pre_tool_result"))
       self.assertTrue(resp.pre_tool_result.HasField("modified_args"))
-      self.assertIn(
-          "custom_value", resp.pre_tool_result.modified_arguments_json
-      )
+      fields = {
+          f.name: f.value for f in resp.pre_tool_result.modified_args.fields
+      }
+      self.assertEqual(fields["custom"].string_value, "custom_value")
+      self.assertEqual(fields["str_val"].string_value, "hello")
 
     asyncio.run(_test())
 

@@ -231,15 +231,6 @@ class HookRouter:
     if result.allow:
       ptr.decision = localharness_pb2.PreToolResult.Decision.ALLOW
       if result.modified_args is not None:
-        try:
-          ptr.modified_arguments_json = json.dumps(result.modified_args)
-        except (TypeError, ValueError):
-          try:
-            ptr.modified_arguments_json = json.dumps(
-                result.modified_args, default=str
-            )
-          except Exception:
-            ptr.modified_arguments_json = ""
         ptr.modified_args.CopyFrom(
             struct_converter.to_struct(result.modified_args)
         )
