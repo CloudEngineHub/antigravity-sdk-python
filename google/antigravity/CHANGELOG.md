@@ -7,6 +7,55 @@ All notable changes to the Google Antigravity Python SDK will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.17] - 2026-09-14
+
+This release introduces first-class conversation compaction controls via `CompactionConfig`, delta and forward-looking budget scopes for session resumption, tool output token truncation limits, and expanded arithmetic operations on `UsageMetadata`. It also delivers OS-level terminal sandboxing examples and automated tool wrapper reflection preservation.
+
+### 🌟 Key Highlights
+- **Compaction Configuration**: Adds `CompactionConfig` on `AgentConfig` to govern sliding-window conversation history compaction through an explicit token ceiling dial (`token_threshold`), deprecating `CapabilitiesConfig.compaction_threshold`.
+  ```python
+  from google.antigravity import CompactionConfig, LocalAgentConfig
+
+  config = LocalAgentConfig(compaction_config=CompactionConfig(token_threshold=50000))
+  ```
+- **Forward-Looking Budget Scope**: Adds `BudgetScope.FORWARD_LOOKING` to `BudgetConfig` to enforce model call and token budgets across newly resumed execution turns without counting previous historical usage.
+  ```python
+  from google.antigravity import BudgetConfig, BudgetScope, LocalAgentConfig
+
+  config = LocalAgentConfig(budget_config=BudgetConfig(max_total_tokens=10000, scope=BudgetScope.FORWARD_LOOKING))
+  ```
+- **Tool Output Token Truncation**: Exposes `tool_output_truncation_config` across agent configurations to cap token output volume initially for `run_command` executions in localharness.
+  ```python
+  from google.antigravity import CapabilitiesConfig, LocalAgentConfig, ToolOutputTruncationConfig
+
+  config = LocalAgentConfig(
+      capabilities=CapabilitiesConfig(
+          tool_output_truncation_config=ToolOutputTruncationConfig(max_tokens=2048)
+      )
+  )
+  ```
+- **UsageMetadata Arithmetic**: Supports standard Python arithmetic protocols on `UsageMetadata`, enabling scalar multiplications, scaling, and accumulating token counts using built-in `sum()`.
+  ```python
+  from google.antigravity.types import UsageMetadata
+
+  total_usage = sum([usage1, usage2], start=UsageMetadata())
+  scaled_usage = total_usage * 1.5
+  ```
+
+---
+
+### 📋 Detailed Changes
+
+#### Features & Enhancements
+- **Tool Wrapper Metadata Preservation**: Preserves function signature, module name, annotations, and original callable references via `__wrapped__` when registering tools with `ToolWithSchema`.
+- **Interactive REPL Policy Flattening**: Automatically flattens nested policy lists during interactive REPL upgrades so nested command authorization rules correctly upgrade to prompt the user.
+- **Terminal Command Sandboxing Guide**: Added getting-started guide and references demonstrating OS-level command sandboxing using `RunCommandConfig(enable_sandbox=True)` paired with execution policies.
+
+#### Bug Fixes
+- **Tool Call Deserialization**: Fixed dropped tool arguments during tool call handling when incoming payloads provide structured dictionary arguments rather than serialized JSON strings.
+- **Local Step Trajectory Tracking**: Fixed missing provenance metadata by forwarding `trajectory_id` from incoming tool calls to local connection execution steps.
+- **Dynamic Content Proto Resolution**: Fixed an `AttributeError` when importing `struct_converter` in external environments missing internal protobuf definitions by resolving descriptor types dynamically at runtime.
+
 ## [0.1.16] - 2026-08-31
 
 This release updates the default model for new agents to `gemini-3.8-flash` for higher quality and reasoning capabilities, alongside improving agent configuration expressiveness, performance for small and local models, and platform connectivity. Developers can now easily configure lightweight agents optimized for local environments via a new fluent method, connect to Vertex AI with API keys in Express mode, and benefit from expanded support for custom tool implementations (functors, dataclasses).
