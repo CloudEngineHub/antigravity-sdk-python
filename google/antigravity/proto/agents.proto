@@ -214,6 +214,19 @@ message AntigravityAgentConfig {
     .genai.AntigravityAgentConfig.ModelAPIRetryConfig api_retry = 1;
     .genai.AntigravityAgentConfig.ModelOutputRetryConfig model_output_retry = 2;
   }
+  message BudgetConfig {
+    enum BudgetScope {
+      BUDGET_SCOPE_UNSPECIFIED = 0;
+      BUDGET_SCOPE_LIFETIME = 1;
+      BUDGET_SCOPE_FORWARD_LOOKING = 2;
+    }
+    int64 max_model_calls = 1;
+    int64 max_tool_calls = 2;
+    int64 max_input_tokens = 3;
+    int64 max_output_tokens = 4;
+    int64 max_total_tokens = 5;
+    .genai.AntigravityAgentConfig.BudgetConfig.BudgetScope scope = 6;
+  }
   enum ModelType {
     MODEL_TYPE_UNSPECIFIED = 0;
     MODEL_TYPE_TEXT = 1;
@@ -258,6 +271,7 @@ message AntigravityAgentConfig {
       20;
   .genai.AntigravityAgentConfig.RetryConfig retry_config = 21;
   .genai.AntigravityAgentConfig.PolicyConfig policy_config = 22;
+  .genai.AntigravityAgentConfig.BudgetConfig budget_config = 23;
 }
 message AgentPolicy {
   bool enable_image_generation = 1;
