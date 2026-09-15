@@ -120,6 +120,18 @@ class EventProcessorHelperTest(absltest.TestCase):
     self.assertIsNone(meta.total_token_count)
     self.assertIsNone(meta.service_tier)
 
+  def test_parse_usage_metadata_unknown_service_tier_is_dropped(self):
+    # Vertex AI reports tiers the Gemini Developer API does not define. Raising
+    # here escapes the websocket reader loop and kills a turn whose response has
+    # already been delivered, so the tier is dropped and the counts survive.
+    pb = localharness_pb2.UsageMetadata(
+        total_token_count=250,
+        service_tier="PROVISIONED_THROUGHPUT",
+    )
+    meta = event_processor.parse_usage_metadata(pb)
+    self.assertIsNone(meta.service_tier)
+    self.assertEqual(meta.total_token_count, 250)
+
   def test_parse_stop_reason(self):
     self.assertEqual(
         event_processor._parse_stop_reason(  # pylint: disable=protected-access

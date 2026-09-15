@@ -170,6 +170,30 @@ def _extract_tool_result(
 _make_step_id = make_step_id
 
 
+def _parse_service_tier(raw: str) -> types.ServiceTier | None:
+  """Maps a reported service tier onto the enum, tolerating unknown values.
+
+  `ServiceTier` enumerates the Gemini Developer API tiers, but the backend a
+  request actually lands on decides what it reports: Vertex AI returns tiers of
+  its own, such as `PROVISIONED_THROUGHPUT`. Usage metadata is telemetry, so an
+  unrecognised tier is dropped rather than raised -- otherwise it propagates out
+  of the websocket reader loop and kills a turn whose response already arrived.
+
+  Args:
+    raw: The service tier as reported by the backend.
+
+  Returns:
+    The matching ServiceTier, or None when the value is empty or unrecognised.
+  """
+  if not raw:
+    return None
+  try:
+    return types.ServiceTier(raw)
+  except ValueError:
+    logging.debug("Ignoring unrecognised service tier %r.", raw)
+    return None
+
+
 def parse_usage_metadata(
     usage_metadata: localharness_pb2.UsageMetadata,
 ) -> types.UsageMetadata:
@@ -190,9 +214,7 @@ def parse_usage_metadata(
       total_token_count=usage_metadata.total_token_count
       if usage_metadata.HasField("total_token_count")
       else None,
-      service_tier=types.ServiceTier(usage_metadata.service_tier)
-      if usage_metadata.service_tier
-      else None,
+      service_tier=_parse_service_tier(usage_metadata.service_tier),
   )
 
 
