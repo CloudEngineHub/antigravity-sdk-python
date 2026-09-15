@@ -16,7 +16,6 @@ edition = "2024";
 
 package genai;
 
-import "google/rpc/status.proto";
 import "google/antigravity/proto/agents.proto";
 import "google/antigravity/proto/content.proto";
 import "google/antigravity/proto/environment.proto";
@@ -126,7 +125,7 @@ message CompleteInteractionEvent {}
 message CancelInteractionEvent {}
 message DisconnectEvent {}
 message InteractionCompletedEvent {
-  .google.rpc.Status status = 1;
+  reserved 1;
   string created = 2;
   string updated = 3;
   extensions 1000 to max;
