@@ -35,6 +35,11 @@ message EnvironmentConfig {
   message EgressRule {
     string domain = 1;
     map<string, string> transform = 2 [(gaos.parsing.flexible_map) = true];
+    string credential = 3;
+  }
+  message EnvVar {
+    string value = 1;
+    string credential = 2;
   }
   message EnvironmentNetworkEgressAllowlist {
     repeated .genai.EnvironmentConfig.EgressRule allowlist = 1;
@@ -52,6 +57,10 @@ message EnvironmentConfig {
   }
   repeated .genai.EnvironmentConfig.Source sources = 1;
   string environment_id = 4;
+  map<string, .genai.EnvironmentConfig.EnvVar> env = 5 [
+    (gaos.parsing.add_union_value) = "env.value.value",
+    (gaos.parsing.flexible_map) = true
+  ];
 }
 message Environment {
   enum Status {
