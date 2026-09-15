@@ -150,6 +150,7 @@ message Interaction {
   string environment_id = 47;
   .genai.ServiceTier service_tier = 48;
   repeated .genai.Step steps = 51;
+  map<string, string> labels = 59;
   repeated .genai.Error errors = 62;
 }
 message InteractionMetadata {
