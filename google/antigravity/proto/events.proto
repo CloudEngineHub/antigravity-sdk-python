@@ -44,8 +44,6 @@ message ClientEventBatch {
 }
 message ClientEvent {
   oneof event_type {
-    option (gaos.parsing.subtype_source) = true;
-
     .genai.Payload payload = 3;
   }
   int64 seq_num = 10;
