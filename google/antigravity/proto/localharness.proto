@@ -61,6 +61,11 @@ enum PolicyEvaluationOutcome {
   POLICY_EVALUATION_OUTCOME_DENY = 2;
   POLICY_EVALUATION_OUTCOME_NO_MATCH = 3;
 }
+enum ToolExecutionMode {
+  TOOL_EXECUTION_MODE_UNSPECIFIED = 0;
+  TOOL_EXECUTION_MODE_SYNC = 1;
+  TOOL_EXECUTION_MODE_ASYNC = 2;
+}
 message InputConfig {
   string storage_directory = 1;
   uint32 port = 2;
@@ -240,6 +245,7 @@ message RunCommandToolConfig {
   uint32 max_timeout_ms = 2;
   bool enable_daemon_commands = 3;
   bool enable_sandbox = 4;
+  .antigravity.localharness.ToolExecutionMode execution_mode = 5;
 }
 message SubagentsConfig {
   bool enabled = 1;
