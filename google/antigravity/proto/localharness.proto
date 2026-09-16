@@ -113,8 +113,12 @@ message HarnessConfig {
   .antigravity.localharness.AgentBehavior agent_behavior = 22;
   .antigravity.localharness.BudgetConfig budget_config = 23;
   .antigravity.localharness.CompactionConfig compaction_config = 24;
+  .antigravity.localharness.RulesConfig rules_config = 28;
   extensions 1000 to 1999;
   extensions 2000 to max;
+}
+message RulesConfig {
+  repeated string filenames = 1;
 }
 message ModelAPIRetryConfig {
   uint32 max_retries = 1;
