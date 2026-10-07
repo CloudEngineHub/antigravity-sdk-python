@@ -178,20 +178,7 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
     if event_type == "step.stop":
       res = self._step_assembler.handle_step_stop(event)
       if res.step_usage is not None:
-        self._cumulative_usage = self._cumulative_usage + res.step_usage
-        traj_id = (
-            res.trajectory_id
-            or self._step_assembler.root_interaction_id
-            or self.main_trajectory_id
-            or ""
-        )
-        if traj_id:
-          prev = self._trajectory_usages.get(traj_id)
-          self._trajectory_usages[traj_id] = (
-              (prev + res.step_usage)
-              if prev is not None
-              else res.step_usage.model_copy()
-          )
+        self._record_step_usage(res.step_usage, res.trajectory_id)
       if res.step is not None:
         await self._emit_step(
             res.step,
@@ -200,9 +187,38 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
         )
       return
 
+    if event_type == "usage_update":
+      usage_payload = (
+          event["usage_update"]
+          if isinstance(event.get("usage_update"), dict)
+          else event
+      )
+      step_usage = interactions_step_assembler.parse_interaction_usage(
+          usage_payload
+      )
+      if step_usage is not None:
+        sub_id = str(event.get("sub_interaction_id") or "")
+        self._record_step_usage(step_usage, sub_id)
+      return
+
     if event_type == "state_update":
       await self._handle_state_update(event)
       return
+
+  def _record_step_usage(
+      self, step_usage: types.UsageMetadata, trajectory_id: str = ""
+  ) -> None:
+    """Accumulates per-step UsageMetadata into cumulative and trajectory totals."""
+    self._cumulative_usage = self._cumulative_usage + step_usage
+    traj_id = (
+        trajectory_id
+        or self._step_assembler.root_interaction_id
+        or self.main_trajectory_id
+        or ""
+    )
+    if traj_id:
+      prev = self._trajectory_usages.get(traj_id, types.UsageMetadata())
+      self._trajectory_usages[traj_id] = prev + step_usage
 
   def _build_compaction_step(
       self, event: dict[str, Any]

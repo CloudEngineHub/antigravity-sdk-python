@@ -173,6 +173,93 @@ class InteractionsConnectionUnitTest(unittest.IsolatedAsyncioTestCase):
     with self.assertRaises(NotImplementedError):
       await conn.send_trigger_notification("ping")
 
+  async def test_usage_update_accumulates_root_and_subagent_usage(self):
+    conn = interactions_connection.InteractionsConnection(
+        process=self.mock_process,
+        ws=self.ws,
+        root_interaction_id="conv-root",
+    )
+    conn._is_idle.clear()
+    # 1. Root trajectory usage_update (proto3 implicit presence omits zeros)
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "state_update",
+            "state": "running",
+        })
+    )
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "usage_update",
+            "total_input_tokens": 100,
+            "total_output_tokens": 25,
+            "total_tokens": 125,
+        })
+    )
+    # 1b. Second root trajectory usage_update (nested usage_update payload)
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "usage_update",
+            "usage_update": {
+                "total_input_tokens": 50,
+                "total_output_tokens": 10,
+                "total_tokens": 60,
+            },
+        })
+    )
+    # 2. Subagent trajectory usage_update
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "usage_update",
+            "sub_interaction_id": "sub-conv-1",
+            "total_input_tokens": 40,
+            "total_cached_tokens": 10,
+            "total_output_tokens": 15,
+            "total_thought_tokens": 5,
+            "total_tokens": 70,
+        })
+    )
+    # 3. Complete turn via state_update(fully_idle) so receive_steps drains
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "state_update",
+            "state": "fully_idle",
+        })
+    )
+    async for _ in conn.receive_steps():
+      pass
+
+    self.assertEqual(
+        conn.cumulative_usage,
+        types.UsageMetadata(
+            prompt_token_count=190,
+            cached_content_token_count=10,
+            candidates_token_count=50,
+            thoughts_token_count=5,
+            total_token_count=255,
+        ),
+    )
+    self.assertEqual(
+        conn.trajectory_usages["conv-root"],
+        types.UsageMetadata(
+            prompt_token_count=150,
+            cached_content_token_count=0,
+            candidates_token_count=35,
+            thoughts_token_count=0,
+            total_token_count=185,
+        ),
+    )
+    self.assertEqual(
+        conn.trajectory_usages["sub-conv-1"],
+        types.UsageMetadata(
+            prompt_token_count=40,
+            cached_content_token_count=10,
+            candidates_token_count=15,
+            thoughts_token_count=5,
+            total_token_count=70,
+        ),
+    )
+    await conn.disconnect()
+
 
 if __name__ == "__main__":
   absltest.main()
