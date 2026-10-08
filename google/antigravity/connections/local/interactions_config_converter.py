@@ -844,17 +844,23 @@ def content_to_user_input_event(content: types.Content) -> dict[str, Any]:
       if isinstance(content, str) or not isinstance(content, Sequence)
       else list(content)
   )
-  if len(items) == 1 and isinstance(items[0], types.SlashCommand):
-    return {
-        "event_type": "input",
-        "slash_command": {"name": _slash_command_name(items[0])},
-    }
+  slash_commands = [
+      item for item in items if isinstance(item, types.SlashCommand)
+  ]
+  if len(slash_commands) > 1:
+    raise ValueError("At most one SlashCommand can be provided per turn.")
+  other_items = [
+      item for item in items if not isinstance(item, types.SlashCommand)
+  ]
 
-  content_list = [_primitive_to_content_dict(item) for item in items]
-  return {
-      "event_type": "input",
-      "content": content_list,
-  }
+  event: dict[str, Any] = {"event_type": "input"}
+  if slash_commands:
+    event["slash_command"] = {"name": _slash_command_name(slash_commands[0])}
+  if other_items or not slash_commands:
+    event["content"] = [
+        _primitive_to_content_dict(item) for item in other_items
+    ]
+  return event
 
 
 def tool_result_to_function_result_event(

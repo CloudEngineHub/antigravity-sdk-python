@@ -624,6 +624,25 @@ class InteractionsConfigConverterTest(absltest.TestCase):
         },
     )
 
+    ev_sc_text = interactions_config_converter.content_to_user_input_event([
+        types.SlashCommand(name=types.BuiltinSlashCommandName.PLAN),
+        "Write a script",
+    ])
+    self.assertEqual(
+        ev_sc_text,
+        {
+            "event_type": "input",
+            "slash_command": {"name": "plan"},
+            "content": [{"type": "text", "text": "Write a script"}],
+        },
+    )
+
+    with self.assertRaises(ValueError):
+      interactions_config_converter.content_to_user_input_event([
+          types.SlashCommand(name=types.BuiltinSlashCommandName.PLAN),
+          types.SlashCommand(name=types.BuiltinSlashCommandName.PLAN),
+      ])
+
     img = types.Image(data=b"pngdata", mime_type="image/png")
     ev_multi = interactions_config_converter.content_to_user_input_event(
         ["Describe this:", img]
