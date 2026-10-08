@@ -260,6 +260,176 @@ class InteractionsConnectionUnitTest(unittest.IsolatedAsyncioTestCase):
     )
     await conn.disconnect()
 
+  async def test_tool_hooks_correlate_call_id_and_step_id(self):
+    pre_calls: list[types.ToolCall] = []
+    post_results: list[types.ToolResult] = []
+    tool_errors: list[types.ToolExecutionError] = []
+
+    @hooks.pre_tool_call_decide
+    async def on_pre_tool(data: types.ToolCall) -> types.HookResult:
+      pre_calls.append(data)
+      return types.HookResult(allow=True)
+
+    @hooks.post_tool_call
+    async def on_post_tool(data: types.ToolResult) -> None:
+      post_results.append(data)
+
+    @hooks.on_tool_error
+    async def on_tool_err(data: types.ToolExecutionError) -> None:
+      tool_errors.append(data)
+
+    hr = hook_runner.HookRunner(
+        pre_tool_call_decide_hooks=[on_pre_tool],
+        post_tool_call_hooks=[on_post_tool],
+        on_tool_error_hooks=[on_tool_err],
+    )
+    conn = interactions_connection.InteractionsConnection(
+        process=self.mock_process,
+        ws=self.ws,
+        hook_runner=hr,
+        root_interaction_id="conv-root",
+    )
+    conn._is_idle.clear()
+    await self.ws.queue.put(
+        json.dumps({"event_type": "state_update", "state": "running"})
+    )
+
+    # 1. User input step at index 0
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "step.start",
+            "index": 0,
+            "step": {"type": "user_input", "content": "Hello"},
+        })
+    )
+    await self.ws.queue.put(json.dumps({"event_type": "step.stop", "index": 0}))
+
+    # 2. PreTool hook fires with explicit call_id
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "call_hook_request",
+            "request_id": "req-pre-1",
+            "type": "pre_tool",
+            "name": "PreTool",
+            "pre_tool_args": {
+                "tool_name": "get_weather",
+                "arguments_json": '{"location": "Seattle"}',
+                "call_id": "call-weather-1",
+            },
+        })
+    )
+    await asyncio.wait_for(self.ws.sent_queue.get(), timeout=2.0)
+
+    # 3. step.start(function_call) at index 1 with id="call-weather-1"
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "step.start",
+            "index": 1,
+            "step": {
+                "type": "function_call",
+                "id": "call-weather-1",
+                "name": "get_weather",
+                "arguments": {"location": "Seattle"},
+            },
+        })
+    )
+    await self.ws.queue.put(json.dumps({"event_type": "step.stop", "index": 1}))
+
+    # 4. PostTool hook fires with explicit call_id
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "call_hook_request",
+            "request_id": "req-post-1",
+            "type": "post_tool",
+            "name": "PostTool",
+            "post_tool_args": {
+                "tool_name": "get_weather",
+                "result": "Sunny",
+                "call_id": "call-weather-1",
+            },
+        })
+    )
+    await asyncio.wait_for(self.ws.sent_queue.get(), timeout=2.0)
+
+    # 5. Built-in tool error at index 2 followed by OnToolError hook
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "step.start",
+            "index": 2,
+            "step": {
+                "type": "code_execution_call",
+                "id": "call-cmd-2",
+                "code": "false",
+            },
+        })
+    )
+    await self.ws.queue.put(json.dumps({"event_type": "step.stop", "index": 2}))
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "step.start",
+            "index": 3,
+            "step": {
+                "type": "code_execution_result",
+                "call_id": "call-cmd-2",
+                "is_error": True,
+                "result": "exit status 1",
+            },
+        })
+    )
+    await self.ws.queue.put(json.dumps({"event_type": "step.stop", "index": 3}))
+    await self.ws.queue.put(
+        json.dumps({
+            "event_type": "call_hook_request",
+            "request_id": "req-err-1",
+            "type": "on_tool_error",
+            "name": "OnToolError",
+            "on_tool_error_args": {
+                "tool_name": "run_command",
+                "error_message": "exit status 1",
+                "call_id": "call-cmd-2",
+            },
+        })
+    )
+    await asyncio.wait_for(self.ws.sent_queue.get(), timeout=2.0)
+
+    await self.ws.queue.put(
+        json.dumps({"event_type": "state_update", "state": "fully_idle"})
+    )
+    emitted_steps = [step async for step in conn.receive_steps()]
+    tool_steps = [
+        s for s in emitted_steps if s.type == types.StepType.TOOL_CALL
+    ]
+    self.assertEqual(len(tool_steps), 3)
+    self.assertEqual(tool_steps[0].tool_calls[0].id, "call-weather-1")
+    self.assertEqual(tool_steps[0].tool_calls[0].step_id, "call-weather-1")
+    self.assertEqual(tool_steps[1].tool_calls[0].id, "call-cmd-2")
+    self.assertEqual(tool_steps[1].tool_calls[0].step_id, "call-cmd-2")
+    self.assertEqual(tool_steps[2].tool_calls[0].id, "call-cmd-2")
+    self.assertEqual(tool_steps[2].tool_calls[0].step_id, "call-cmd-2")
+
+    self.assertEqual(len(pre_calls), 1)
+    self.assertEqual(pre_calls[0].id, "call-weather-1")
+    self.assertEqual(pre_calls[0].step_id, "call-weather-1")
+    self.assertEqual(pre_calls[0].id, tool_steps[0].tool_calls[0].id)
+    self.assertEqual(pre_calls[0].step_id, tool_steps[0].tool_calls[0].step_id)
+
+    self.assertEqual(len(post_results), 1)
+    self.assertEqual(post_results[0].id, "call-weather-1")
+    self.assertEqual(post_results[0].step_id, "call-weather-1")
+    self.assertEqual(post_results[0].id, tool_steps[0].tool_calls[0].id)
+    self.assertEqual(
+        post_results[0].step_id, tool_steps[0].tool_calls[0].step_id
+    )
+
+    self.assertEqual(len(tool_errors), 1)
+    self.assertEqual(tool_errors[0].call_id, "call-cmd-2")
+    self.assertEqual(tool_errors[0].step_id, "call-cmd-2")
+    self.assertEqual(tool_errors[0].call_id, tool_steps[2].tool_calls[0].id)
+    self.assertEqual(
+        tool_errors[0].step_id, tool_steps[2].tool_calls[0].step_id
+    )
+    await conn.disconnect()
+
 
 if __name__ == "__main__":
   absltest.main()

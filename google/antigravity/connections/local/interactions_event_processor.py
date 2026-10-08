@@ -25,7 +25,6 @@ from google.antigravity.connections.local import event_processor
 from google.antigravity.connections.local import interactions_config_converter
 from google.antigravity.connections.local import interactions_step_assembler
 from google.antigravity.connections.local import struct_converter
-from google.antigravity.connections.local.local_connection_config import make_step_id
 from google.antigravity.connections.local.local_connection_config import normalize_wire_path
 from google.antigravity.connections.local.local_connection_config import PROTO_FIELD_TO_SDK_NAME
 from google.antigravity.connections.local.local_connection_config import WIRE_PATH_ARGUMENT_KEYS
@@ -231,7 +230,7 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
     step_idx = int(oca.get("step_index", 0))
     summary = str(oca.get("summary", ""))
     return event_processor.LocalConnectionStep(
-        id=make_step_id(traj_id, step_idx),
+        id=f"{traj_id}:{step_idx}" if traj_id else str(step_idx),
         step_index=step_idx,
         trajectory_id=traj_id,
         type=types.StepType.COMPACTION,
@@ -344,9 +343,7 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
         server_name = str(pta["server_name"])
       if pta.get("call_id"):
         call_id = str(pta["call_id"])
-      traj_id = str(pta.get("interaction_id") or pta.get("trajectory_id") or "")
-      if traj_id or "step_index" in pta:
-        step_id = make_step_id(traj_id, int(pta.get("step_index", 0)))
+        step_id = call_id
       for key in WIRE_PATH_ARGUMENT_KEYS:
         val = args.get(key)
         if isinstance(val, str) and val:
@@ -392,20 +389,17 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
     call_id: str | None = None
     step_id: str | None = None
     result_val: Any = None
-    error_str = ""
     pta = event.get("post_tool_args")
     if isinstance(pta, dict):
       raw_tool_name = str(pta.get("tool_name", ""))
       tool_name = PROTO_FIELD_TO_SDK_NAME.get(raw_tool_name, raw_tool_name)
       server_name = str(pta["server_name"]) if pta.get("server_name") else None
-      call_id = str(pta["call_id"]) if pta.get("call_id") else None
-      traj_id = str(pta.get("interaction_id") or pta.get("trajectory_id") or "")
-      if traj_id or "step_index" in pta:
-        step_id = make_step_id(traj_id, int(pta.get("step_index", 0)))
+      if pta.get("call_id"):
+        call_id = str(pta["call_id"])
+        step_id = call_id
       raw_result = str(pta.get("result", ""))
-      error_str = str(pta.get("error", ""))
-      result_val = raw_result if not error_str else None
-      if not error_str and raw_result:
+      result_val = raw_result
+      if raw_result:
         extracted = event_processor._extract_tool_result(  # pylint: disable=protected-access
             tool_name, raw_result
         )
@@ -418,7 +412,6 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
         step_id=step_id,
         server_name=server_name,
         result=result_val,
-        error=error_str or None,
     )
     turn_ctx = self._get_turn_context()
     op_ctx = hooks.OperationContext(turn_ctx)
@@ -441,10 +434,9 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
       raw_tool_name = str(ote.get("tool_name", ""))
       tool_name = PROTO_FIELD_TO_SDK_NAME.get(raw_tool_name, raw_tool_name)
       server_name = str(ote["server_name"]) if ote.get("server_name") else None
-      call_id = str(ote["call_id"]) if ote.get("call_id") else None
-      traj_id = str(ote.get("interaction_id") or ote.get("trajectory_id") or "")
-      if traj_id or "step_index" in ote:
-        step_id = make_step_id(traj_id, int(ote.get("step_index", 0)))
+      if ote.get("call_id"):
+        call_id = str(ote["call_id"])
+        step_id = call_id
 
     error = types.ToolExecutionError(
         error_message, tool_name, server_name, call_id=call_id, step_id=step_id

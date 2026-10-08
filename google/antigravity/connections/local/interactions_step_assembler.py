@@ -400,15 +400,18 @@ class InteractionsStepAssembler:
 
     if subtype == "elicitation_call":
       elicitation = _parse_elicitation_call(step_dict, traj_id, step_idx)
+      el_call_id = (
+          elicitation.elicitation_id
+          if elicitation
+          else make_step_id(traj_id, step_idx)
+      )
       tc = types.ToolCall(
           name=types.BuiltinTools.ASK_QUESTION.value,
           args=(
               {"question": elicitation.question.question} if elicitation else {}
           ),
-          id=elicitation.elicitation_id
-          if elicitation
-          else make_step_id(traj_id, step_idx),
-          step_id=make_step_id(traj_id, step_idx),
+          id=el_call_id,
+          step_id=el_call_id,
       )
       if tc.id:
         self._pending_calls_by_id[tc.id] = tc
@@ -441,11 +444,12 @@ class InteractionsStepAssembler:
     if subtype == "elicitation_result":
       el_id = str(step_dict.get("elicitation_id", ""))
       matched_tc = self._pending_calls_by_id.pop(el_id, None) if el_id else None
+      el_call_id = el_id or make_step_id(traj_id, step_idx)
       tc = matched_tc or types.ToolCall(
           name=types.BuiltinTools.ASK_QUESTION.value,
           args={},
-          id=el_id or make_step_id(traj_id, step_idx),
-          step_id=make_step_id(traj_id, step_idx),
+          id=el_call_id,
+          step_id=el_call_id,
       )
       state = _AssembledStepState(
           trajectory_id=traj_id,
@@ -739,7 +743,7 @@ class InteractionsStepAssembler:
         name=tool_name,
         args=norm_args,
         id=call_id,
-        step_id=step_id,
+        step_id=call_id,
         canonical_path=canonical_path,
         server_name=server_name,
     )
@@ -770,6 +774,7 @@ class InteractionsStepAssembler:
 
     if matched_tc is None:
       step_id = make_step_id(traj_id, step_idx)
+      resolved_id = call_id or step_id
       tool_name = str(
           step_dict.get("name")
           or _RESULT_KIND_DEFAULT_TOOL_NAME.get(kind, subtype)
@@ -778,8 +783,8 @@ class InteractionsStepAssembler:
       matched_tc = types.ToolCall(
           name=tool_name,
           args={},
-          id=call_id or step_id,
-          step_id=step_id,
+          id=resolved_id,
+          step_id=resolved_id,
           server_name=server_name,
       )
 
