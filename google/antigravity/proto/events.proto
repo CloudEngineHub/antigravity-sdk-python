@@ -22,6 +22,7 @@ import "google/antigravity/proto/elicitation.proto";
 import "google/antigravity/proto/environment.proto";
 import "google/antigravity/proto/hooks.proto";
 import "google/antigravity/proto/interaction.proto";
+import "google/antigravity/proto/media_stream_steps.proto";
 import "google/antigravity/proto/models.proto";
 import "google/antigravity/proto/sse_events.proto";
 import "google/antigravity/proto/state_update.proto";
@@ -170,6 +171,7 @@ message Payload {
         [(gaos.parsing.json_discriminator_value) = "step.delta"];
     .genai.StepStop step_stop = 3
         [(gaos.parsing.json_discriminator_value) = "step.stop"];
+    .genai.MediaStreamAppend media_stream_append = 202;
     .genai.InputEvent input = 207
         [(gaos.parsing.json_discriminator_value) = "input"];
     .genai.StateUpdate state_update = 13;

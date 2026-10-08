@@ -19,3 +19,15 @@ package genai;
 import "google/antigravity/proto/genai_json_annotations.proto";
 
 option features = { field_presence : IMPLICIT enum_type : OPEN utf8_validation : NONE };
+
+message MediaStreamAppend {
+  oneof event_type {
+    option (gaos.parsing.subtype_source) = true;
+
+    .genai.AudioStreamAppend audio = 2
+        [(gaos.parsing.json_discriminator_value) = "input.audio.append"];
+  }
+}
+message AudioStreamAppend {
+  bytes data = 1;
+}

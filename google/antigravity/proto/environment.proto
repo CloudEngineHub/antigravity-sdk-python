@@ -90,3 +90,4 @@ message Environment {
   int64 file_count = 9;
   int64 size_bytes = 10;
 }
+message LocalEnvironmentConfig {}

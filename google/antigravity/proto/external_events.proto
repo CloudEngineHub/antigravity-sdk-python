@@ -18,6 +18,7 @@ package genai;
 
 import "google/antigravity/proto/events.proto";
 import "google/antigravity/proto/hooks.proto";
+import "google/antigravity/proto/media_stream_steps.proto";
 import "google/antigravity/proto/genai_json_annotations.proto";
 
 option features = { field_presence : IMPLICIT enum_type : OPEN utf8_validation : NONE };
@@ -38,6 +39,7 @@ message ExternalClientEvent {
         [(gaos.parsing.json_discriminator_value) = "interaction.disconnect"];
     .genai.InputEvent input = 11
         [(gaos.parsing.json_discriminator_value) = "input"];
+    .genai.MediaStreamAppend media_stream_append = 12;
     .genai.CallHookResponse call_hook_response = 14;
     .genai.FunctionResultEvent function_result = 15
         [(gaos.parsing.json_discriminator_value) = "function_result"];
