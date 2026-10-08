@@ -37,6 +37,7 @@ message Step {
   oneof type {
     option (gaos.parsing.subtype_source) = true;
 
+    .genai.ContentStep content = 12;
     .genai.ThoughtStep thought = 3;
     .genai.ToolCallStep tool_call = 4;
     .genai.ToolResultStep tool_result = 5;
@@ -51,6 +52,10 @@ message Step {
     .genai.LegacyVideoContent video = 10;
   }
   string description = 16;
+}
+message ContentStep {
+  string role = 1;
+  repeated .genai.Content content = 2;
 }
 message ThoughtStep {
   bytes signature = 1;

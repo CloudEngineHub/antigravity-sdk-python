@@ -90,4 +90,7 @@ message Environment {
   int64 file_count = 9;
   int64 size_bytes = 10;
 }
-message LocalEnvironmentConfig {}
+message LocalEnvironmentConfig {
+  string workspace_directory = 1;
+  repeated string skill_dirs = 2;
+}
