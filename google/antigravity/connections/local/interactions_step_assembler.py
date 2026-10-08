@@ -16,6 +16,7 @@
 
 import collections
 import dataclasses
+import json
 from typing import Any
 
 from google.antigravity import types
@@ -215,6 +216,15 @@ def _normalize_tool_args(
   return normalized_args, canonical_path
 
 
+def _resolve_default_tool_name(
+    kind: str, subtype: str, step_dict: dict[str, Any]
+) -> str:
+  """Resolves the SDK tool name from a GAOS tool call or result step dict."""
+  if step_dict.get("name"):
+    return str(step_dict["name"])
+  return str(_RESULT_KIND_DEFAULT_TOOL_NAME.get(kind, subtype))
+
+
 def _extract_elicitation_group_key(elicitation_id: str) -> str:
   """Extracts the shared question batch prefix from `<conv>-question-<step>-<qIdx>`."""
   marker = "-question-"
@@ -374,13 +384,18 @@ class InteractionsStepAssembler:
 
     if subtype == "model_output":
       initial_text = _extract_text_from_content(step_dict.get("content", []))
+      step_type = (
+          types.StepType.FINISH
+          if description == "Finish"
+          else types.StepType.TEXT_RESPONSE
+      )
       state = _AssembledStepState(
           trajectory_id=traj_id,
           parent_trajectory_id=parent_traj_id,
           depth=depth,
           step_index=step_idx,
           step_subtype=subtype,
-          step_type=types.StepType.TEXT_RESPONSE,
+          step_type=step_type,
           source=types.StepSource.MODEL,
           target=types.StepTarget.USER,
           description=description,
@@ -644,6 +659,7 @@ class InteractionsStepAssembler:
     )
     if (
         state.step_subtype == "model_output"
+        and state.step_type != types.StepType.FINISH
         and not state.content
         and not state.is_error
     ):
@@ -673,6 +689,16 @@ class InteractionsStepAssembler:
         and state.target == types.StepTarget.USER
         and state.step_type == types.StepType.TEXT_RESPONSE
     )
+    structured_output = None
+    if (
+        state.step_type == types.StepType.FINISH
+        and status == types.StepStatus.DONE
+        and state.content
+    ):
+      try:
+        structured_output = json.loads(state.content)
+      except (ValueError, TypeError):
+        pass
     return event_processor.LocalConnectionStep(
         id=make_step_id(state.trajectory_id, state.step_index),
         step_index=state.step_index,
@@ -688,6 +714,7 @@ class InteractionsStepAssembler:
         thinking=state.thinking,
         thinking_delta=thinking_delta,
         tool_calls=list(state.tool_calls),
+        structured_output=structured_output,
         error=state.error_message,
         is_complete_response=is_complete_response,
     )
@@ -703,10 +730,7 @@ class InteractionsStepAssembler:
     step_id = make_step_id(traj_id, step_idx)
     call_id = str(step_dict.get("id") or step_id)
     kind = _CALL_TO_RESULT_KIND.get(subtype, subtype)
-    tool_name = str(
-        step_dict.get("name")
-        or _RESULT_KIND_DEFAULT_TOOL_NAME.get(kind, subtype)
-    )
+    tool_name = _resolve_default_tool_name(kind, subtype, step_dict)
     server_name = str(step_dict.get("server_name") or "") or None
 
     # Extract all non-envelope fields directly from the flattened step_dict,
@@ -775,10 +799,7 @@ class InteractionsStepAssembler:
     if matched_tc is None:
       step_id = make_step_id(traj_id, step_idx)
       resolved_id = call_id or step_id
-      tool_name = str(
-          step_dict.get("name")
-          or _RESULT_KIND_DEFAULT_TOOL_NAME.get(kind, subtype)
-      )
+      tool_name = _resolve_default_tool_name(kind, subtype, step_dict)
       server_name = str(step_dict.get("server_name") or "") or None
       matched_tc = types.ToolCall(
           name=tool_name,

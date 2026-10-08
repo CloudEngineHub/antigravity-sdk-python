@@ -534,6 +534,62 @@ class InteractionsStepAssemblerTest(absltest.TestCase):
     )
     self.assertEqual(sl_res.step.error, "Skill lookup failed")
 
+  def test_finish_step_structured_output(self):
+    assembler = interactions_step_assembler.InteractionsStepAssembler("conv-1")
+    r_start = assembler.handle_step_start({
+        "event_type": "step.start",
+        "index": 1,
+        "step": {
+            "type": "model_output",
+            "description": "Finish",
+        },
+    })
+    self.assertEqual(r_start.step.type, types.StepType.FINISH)
+    self.assertIsNone(r_start.step.structured_output)
+
+    r_delta = assembler.handle_step_delta({
+        "event_type": "step.delta",
+        "index": 1,
+        "delta": {"type": "text", "text": '{"city": "Tokyo"}'},
+    })
+    self.assertEqual(r_delta.step.type, types.StepType.FINISH)
+    self.assertIsNone(r_delta.step.structured_output)
+
+    r_stop = assembler.handle_step_stop({"event_type": "step.stop", "index": 1})
+    self.assertEqual(r_stop.step.type, types.StepType.FINISH)
+    self.assertEqual(r_stop.step.status, types.StepStatus.DONE)
+    self.assertEqual(r_stop.step.structured_output, {"city": "Tokyo"})
+    self.assertFalse(r_stop.step.is_complete_response)
+
+    # Verify malformed JSON in a Finish step falls back cleanly to None.
+    assembler.handle_step_start({
+        "event_type": "step.start",
+        "index": 2,
+        "step": {"type": "model_output", "description": "Finish"},
+    })
+    assembler.handle_step_delta({
+        "event_type": "step.delta",
+        "index": 2,
+        "delta": {"type": "text", "text": "{invalid json"},
+    })
+    r_bad_stop = assembler.handle_step_stop(
+        {"event_type": "step.stop", "index": 2}
+    )
+    self.assertEqual(r_bad_stop.step.type, types.StepType.FINISH)
+    self.assertIsNone(r_bad_stop.step.structured_output)
+
+    # Verify Finish step with no text delta leaves structured_output as None.
+    assembler.handle_step_start({
+        "event_type": "step.start",
+        "index": 3,
+        "step": {"type": "model_output", "description": "Finish"},
+    })
+    r_empty_stop = assembler.handle_step_stop(
+        {"event_type": "step.stop", "index": 3}
+    )
+    self.assertEqual(r_empty_stop.step.type, types.StepType.FINISH)
+    self.assertIsNone(r_empty_stop.step.structured_output)
+
 
 if __name__ == "__main__":
   absltest.main()
