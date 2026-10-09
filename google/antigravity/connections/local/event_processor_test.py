@@ -495,6 +495,68 @@ class LocalConnectionStepFromDictTest(absltest.TestCase):
     self.assertLen(step.tool_calls, 1)
     self.assertEqual(step.tool_calls[0].id, "traj_123:5")
 
+  def test_step_type_tool_call_with_skill_lookup(self):
+    """Verifies skill_lookup built-in tool step is typed TOOL_CALL and passes payload through."""
+    step = event_processor.LocalConnectionStep.from_dict({
+        "trajectory_id": "traj_123",
+        "step_index": 3,
+        "source": "SOURCE_MODEL",
+        "state": "STATE_DONE",
+        "target": "TARGET_ENVIRONMENT",
+        "text": "Lookup profile threat landscape skill",
+        "skill_lookup": {
+            "operation": "OPERATION_LOOKUP_SKILLS",
+            "requested_skill_names": ["profile-threat-landscape"],
+            "resolved_skill_names": ["profile-threat-landscape"],
+        },
+    })
+    self.assertEqual(step.type, types.StepType.TOOL_CALL)
+    self.assertEqual(step.status, types.StepStatus.DONE)
+    self.assertEqual(step.error, "")
+    self.assertFalse(step.is_complete_response)
+    self.assertLen(step.tool_calls, 1)
+    self.assertEqual(step.tool_calls[0].name, "skill_lookup")
+    self.assertEqual(
+        step.tool_calls[0].args,
+        {
+            "operation": "OPERATION_LOOKUP_SKILLS",
+            "requested_skill_names": ["profile-threat-landscape"],
+            "resolved_skill_names": ["profile-threat-landscape"],
+        },
+    )
+    self.assertEqual(step.tool_calls[0].id, "traj_123:3")
+
+  def test_step_type_tool_call_with_skill_lookup_error(self):
+    """Verifies failed skill_lookup step preserves TOOL_CALL type, STATE_ERROR, and error_message."""
+    step = event_processor.LocalConnectionStep.from_dict({
+        "trajectory_id": "traj_123",
+        "step_index": 4,
+        "source": "SOURCE_MODEL",
+        "state": "STATE_ERROR",
+        "target": "TARGET_ENVIRONMENT",
+        "text": "Get skill resources",
+        "error_message": "Skill 'alpha' not found",
+        "skill_lookup": {
+            "operation": "OPERATION_GET_SKILL_RESOURCES",
+            "requested_skill_names": ["alpha"],
+            "error_message": "Skill 'alpha' not found",
+        },
+    })
+    self.assertEqual(step.type, types.StepType.TOOL_CALL)
+    self.assertEqual(step.status, types.StepStatus.ERROR)
+    self.assertFalse(step.is_complete_response)
+    self.assertLen(step.tool_calls, 1)
+    self.assertEqual(step.tool_calls[0].name, "skill_lookup")
+    self.assertEqual(
+        step.tool_calls[0].args,
+        {
+            "operation": "OPERATION_GET_SKILL_RESOURCES",
+            "requested_skill_names": ["alpha"],
+            "error_message": "Skill 'alpha' not found",
+        },
+    )
+    self.assertEqual(step.error, "Skill 'alpha' not found")
+
   def test_step_from_dict_failed_tool_call_preserves_tool_and_error_message(
       self,
   ):

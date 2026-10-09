@@ -28,9 +28,9 @@ from google.antigravity import types
 from google.antigravity.connections.local import struct_converter
 from google.antigravity.connections.local import types as local_types
 from google.antigravity.connections.local.hook_router import HookRouter
-from google.antigravity.connections.local.local_connection_config import BUILTIN_TOOL_PROTO_FIELDS
 from google.antigravity.connections.local.local_connection_config import make_step_id
 from google.antigravity.connections.local.local_connection_config import normalize_wire_path
+from google.antigravity.connections.local.local_connection_config import PROTO_FIELD_TO_SDK_NAME
 from google.antigravity.connections.local.local_connection_config import WIRE_PATH_ARGUMENT_KEYS
 from google.antigravity.connections.local.proto_converters import _parse_stop_reason
 from google.antigravity.hooks import hook_runner as h_runner
@@ -328,11 +328,11 @@ class LocalConnectionStep(types.Step):
 
     tool_calls = []
 
-    # Find the active built-in tool enum and field name, if any.
+    # Find the active built-in/harness tool name and field payload, if any.
     active_tool_pair = next(
         (
-            (tool_enum.value, step_dict[proto_field])
-            for tool_enum, proto_field in BUILTIN_TOOL_PROTO_FIELDS.items()
+            (sdk_name, step_dict[proto_field])
+            for proto_field, sdk_name in PROTO_FIELD_TO_SDK_NAME.items()
             if proto_field in step_dict
         ),
         (None, {}),
@@ -397,9 +397,7 @@ class LocalConnectionStep(types.Step):
       step_type = types.StepType.COMPACTION
     elif step_dict.get("finish") is not None:
       step_type = types.StepType.FINISH
-    elif active_tool_name or any(
-        step_dict.get(k) is not None for k in BUILTIN_TOOL_PROTO_FIELDS.values()
-    ):
+    elif active_tool_name:
       step_type = types.StepType.TOOL_CALL
     elif step_dict.get("text"):
       step_type = types.StepType.TEXT_RESPONSE

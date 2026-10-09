@@ -53,10 +53,12 @@ BUILTIN_TOOL_PROTO_FIELDS: dict[types.BuiltinTools, str] = {
     types.BuiltinTools.FINISH: "finish",
 }
 
-# Reverse map from canonical StepUpdate proto field name to SDK public
-# BuiltinTools value.
+# Reverse map from canonical StepUpdate proto field name to SDK tool name
+# (including harness-internal actions like skill_lookup that are not exposed
+# on the public BuiltinTools enum).
 PROTO_FIELD_TO_SDK_NAME: dict[str, str] = {
-    v: k.value for k, v in BUILTIN_TOOL_PROTO_FIELDS.items()
+    **{v: k.value for k, v in BUILTIN_TOOL_PROTO_FIELDS.items()},
+    "skill_lookup": "skill_lookup",
 }
 
 # Argument keys in tool call JSON payloads that carry wire-format URIs
