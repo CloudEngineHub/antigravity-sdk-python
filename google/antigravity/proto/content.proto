@@ -199,7 +199,7 @@ message FileCitation {
   string document_uri = 1;
   string file_name = 2;
   string source = 3;
-  .genai.Struct custom_metadata = 4;
+  .google.protobuf.Struct custom_metadata = 4;
   int32 page_number = 5;
   string media_id = 6;
 }
