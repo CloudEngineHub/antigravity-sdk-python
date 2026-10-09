@@ -27,10 +27,11 @@ import logging
 import math
 import mimetypes
 import pathlib
-from typing import Annotated, Any, AsyncIterator, Callable, ClassVar, Literal, TypeVar, cast
+from typing import Annotated, Any, AsyncIterator, Callable, ClassVar, Generic, Literal, TypeVar, cast
 import warnings
 
 import pydantic
+import typing_extensions
 
 from google.antigravity import beta as _beta_lib
 from google.antigravity.models import GeminiAPIEndpoint
@@ -43,6 +44,20 @@ from google.antigravity.models import ThinkingLevel
 from google.antigravity.models import VertexEndpoint
 
 _BaseMediaT = TypeVar("_BaseMediaT", bound="_BaseMedia")
+_T = TypeVar("_T")
+
+DEPRECATED_START_SUBAGENT = "start_subagent"
+
+
+class _classproperty(Generic[_T]):  # pylint: disable=invalid-name
+  """Descriptor for class-level properties (such as deprecated enum aliases)."""
+
+  def __init__(self, fget: Callable[[Any], _T]) -> None:
+    self.fget = fget
+    self.__deprecated__ = getattr(fget, "__deprecated__", None)
+
+  def __get__(self, instance: Any, owner: type[Any] | None = None) -> _T:
+    return self.fget(owner if owner is not None else type(instance))
 
 __all__ = [
     "ThinkingLevel",
@@ -268,16 +283,16 @@ class SubagentCapabilities(pydantic.BaseModel):
   def _validate_subagents_and_tools(self) -> "SubagentCapabilities":
     subagent_disabled = (
         self.disabled_tools is not None
-        and BuiltinTools.START_SUBAGENT in self.disabled_tools
+        and BuiltinTools.INVOKE_SUBAGENT in self.disabled_tools
         and BuiltinTools.RUN_WORKFLOW in self.disabled_tools
     ) or (
         self.enabled_tools is not None
-        and BuiltinTools.START_SUBAGENT not in self.enabled_tools
+        and BuiltinTools.INVOKE_SUBAGENT not in self.enabled_tools
         and BuiltinTools.RUN_WORKFLOW not in self.enabled_tools
     )
     if subagent_disabled and self.allowed_subagents is not None:
       raise ValueError(
-          "allowed_subagents cannot be specified when START_SUBAGENT is"
+          "allowed_subagents cannot be specified when INVOKE_SUBAGENT is"
           " disabled or omitted from enabled_tools."
       )
     return self
@@ -492,7 +507,8 @@ class BuiltinTools(str, enum.Enum):
     EDIT_FILE: Edit an existing file.
     RUN_COMMAND: Execute a shell command.
     ASK_QUESTION: Ask the user a clarifying question.
-    START_SUBAGENT: Invoke a subagent.
+    INVOKE_SUBAGENT: Invoke a subagent.
+    START_SUBAGENT: Deprecated alias for INVOKE_SUBAGENT.
     RUN_WORKFLOW: Execute a multi-agent workflow script.
     GENERATE_IMAGE: Generate or edit images.
     SEARCH_WEB: Search the web.
@@ -509,13 +525,37 @@ class BuiltinTools(str, enum.Enum):
   EDIT_FILE = "edit_file"
   RUN_COMMAND = "run_command"
   ASK_QUESTION = "ask_question"
-  START_SUBAGENT = "start_subagent"
+  INVOKE_SUBAGENT = "invoke_subagent"
   RUN_WORKFLOW = "run_workflow"
   GENERATE_IMAGE = "generate_image"
   SEARCH_WEB = "search_web"
   READ_URL_CONTENT = "read_url_content"
   SCHEDULE = "schedule"
   FINISH = "finish"
+
+  def __str__(self) -> str:
+    return self.value
+
+  @_classproperty
+  @typing_extensions.deprecated(
+      "BuiltinTools.START_SUBAGENT is deprecated; use"
+      " BuiltinTools.INVOKE_SUBAGENT instead.",
+      stacklevel=2,
+  )
+  def START_SUBAGENT(cls) -> "BuiltinTools":  # pylint: disable=invalid-name,no-self-argument
+    return cls.INVOKE_SUBAGENT
+
+  @classmethod
+  def _missing_(cls, value: object) -> "BuiltinTools | None":
+    if value == DEPRECATED_START_SUBAGENT:
+      warnings.warn(
+          f"{DEPRECATED_START_SUBAGENT!r} is deprecated; use"
+          f" {cls.INVOKE_SUBAGENT.value!r} instead.",
+          DeprecationWarning,
+          stacklevel=3,
+      )
+      return cls.INVOKE_SUBAGENT
+    return None
 
   @classmethod
   def read_only(cls) -> list["BuiltinTools"]:
@@ -547,7 +587,7 @@ class BuiltinTools(str, enum.Enum):
         cls.CREATE_FILE,
         cls.EDIT_FILE,
         cls.ASK_QUESTION,
-        cls.START_SUBAGENT,
+        cls.INVOKE_SUBAGENT,
         cls.RUN_WORKFLOW,
         cls.GENERATE_IMAGE,
         cls.SEARCH_WEB,
@@ -636,6 +676,15 @@ class BuiltinTools(str, enum.Enum):
     """
     excluded = {cls.ASK_QUESTION, *cls.deprecated()}
     return [t for t in cls if t not in excluded]
+
+
+def normalize_builtin_tool_name(
+    name: BuiltinTools | str, *, server_name: str | None = None
+) -> BuiltinTools | str:
+  """Normalizes deprecated builtin tool name aliases unless scoped to an MCP server."""
+  if not server_name and name == DEPRECATED_START_SUBAGENT:
+    return BuiltinTools.INVOKE_SUBAGENT.value
+  return name
 
 
 class CapabilitiesConfig(pydantic.BaseModel):
@@ -744,12 +793,12 @@ class CapabilitiesConfig(pydantic.BaseModel):
         not self.enable_subagents
         or (
             self.disabled_tools is not None
-            and BuiltinTools.START_SUBAGENT in self.disabled_tools
+            and BuiltinTools.INVOKE_SUBAGENT in self.disabled_tools
             and BuiltinTools.RUN_WORKFLOW in self.disabled_tools
         )
         or (
             self.enabled_tools is not None
-            and BuiltinTools.START_SUBAGENT not in self.enabled_tools
+            and BuiltinTools.INVOKE_SUBAGENT not in self.enabled_tools
             and BuiltinTools.RUN_WORKFLOW not in self.enabled_tools
         )
     )
@@ -757,7 +806,7 @@ class CapabilitiesConfig(pydantic.BaseModel):
       if self.max_subagent_depth is not None:
         raise ValueError(
             "max_subagent_depth cannot be configured when subagents are"
-            " disabled (enable_subagents=False or START_SUBAGENT not enabled)."
+            " disabled (enable_subagents=False or INVOKE_SUBAGENT not enabled)."
         )
       if self.allowed_subagents is not None:
         raise ValueError(
@@ -984,6 +1033,13 @@ class ToolCall(pydantic.BaseModel):
   canonical_path: str | None = None
   server_name: str | None = None
 
+  @pydantic.model_validator(mode="after")
+  def _normalize_builtin_name(self) -> "ToolCall":
+    self.name = normalize_builtin_tool_name(
+        self.name, server_name=self.server_name
+    )
+    return self
+
 
 class ToolResult(pydantic.BaseModel):
   """Result of a single tool execution.
@@ -1010,6 +1066,13 @@ class ToolResult(pydantic.BaseModel):
   error: str | None = None
   exception: Exception | None = pydantic.Field(default=None, exclude=True)
   server_name: str | None = None
+
+  @pydantic.model_validator(mode="after")
+  def _normalize_builtin_name(self) -> "ToolResult":
+    self.name = normalize_builtin_tool_name(
+        self.name, server_name=self.server_name
+    )
+    return self
 
 
 PythonTool = Callable[..., Any]

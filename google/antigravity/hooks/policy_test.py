@@ -1432,5 +1432,36 @@ class AutoPolicyTest(unittest.IsolatedAsyncioTestCase):
         turn_context, _make_tool_call("run_command")
     )
     self.assertTrue(result.allow)
+
+  async def test_start_subagent_alias_normalized(self):
+    p_str = policy.deny("start_subagent")
+    self.assertEqual(p_str.tool, "invoke_subagent")
+    self.assertIs(type(p_str.tool), str)
+    with self.assertWarns(DeprecationWarning):
+      p_enum = policy.deny(types.BuiltinTools.START_SUBAGENT)
+    self.assertEqual(p_enum.tool, "invoke_subagent")
+
+    cfg, _ = policy._to_policy_config_proto([p_str, p_enum])
+    self.assertEqual(cfg.rules[0].name, "invoke_subagent")
+    self.assertEqual(cfg.rules[1].name, "invoke_subagent")
+
+    mcp_srv = types.McpStdioServer(name="mcp", command="echo")
+    [p_mcp] = policy.deny(mcp_srv, ["start_subagent"])
+    self.assertEqual(p_mcp.tool, "mcp/start_subagent")
+
+    hook = policy.enforce([p_str])
+    ctx = hooks.HookContext()
+    res_invoke = await hook.run(ctx, _make_tool_call("invoke_subagent"))
+    self.assertFalse(res_invoke.allow)
+    self.assertEqual(res_invoke.message, "Denied by policy 'invoke_subagent'.")
+    res_start = await hook.run(ctx, _make_tool_call("start_subagent"))
+    self.assertFalse(res_start.allow)
+    res_mcp = await hook.run(
+        ctx,
+        types.ToolCall(name="start_subagent", server_name="mcp"),
+    )
+    self.assertTrue(res_mcp.allow)
+
+
 if __name__ == "__main__":
   absltest.main()

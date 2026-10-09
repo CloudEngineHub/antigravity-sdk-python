@@ -138,6 +138,11 @@ class Policy:
   name: str = ""
   reason: str = ""
 
+  def __post_init__(self) -> None:
+    object.__setattr__(
+        self, "tool", types.normalize_builtin_tool_name(self.tool)
+    )
+
   @property
   def auto(self) -> bool:
     """Whether this policy enables auto policy mode safety evaluation."""

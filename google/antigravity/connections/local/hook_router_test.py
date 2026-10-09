@@ -543,7 +543,7 @@ class HookRouterStructuredExtractionTest(absltest.TestCase):
         tool_name="invoke_subagent",
         result_str="",
         assertion_fn=lambda res: self.assertEqual(res.result, ""),
-        expected_name=types.BuiltinTools.START_SUBAGENT.value,
+        expected_name=types.BuiltinTools.INVOKE_SUBAGENT.value,
     )
 
   def test_extract_run_command(self):
@@ -1129,21 +1129,24 @@ class HookRouterPreToolTest(absltest.TestCase):
 
       router = HookRouter(hook_runner, lambda _: asyncio.sleep(0))
 
-      # invoke_subagent should be translated to start_subagent.
-      req = localharness_pb2.CallHookRequest(
-          request_id="test_name_translation",
-          name="PreTool",
-          type=localharness_pb2.LIFECYCLE_HOOK_PRE_TOOL,
-          pre_tool_args=localharness_pb2.PreToolArgs(
-              tool_name="invoke_subagent",
-              arguments_json="{}",
-          ),
-      )
+      # invoke_subagent should be preserved as invoke_subagent, and
+      # start_subagent should be translated to invoke_subagent.
+      for wire_name in ("invoke_subagent", "start_subagent"):
+        req = localharness_pb2.CallHookRequest(
+            request_id=f"test_name_translation_{wire_name}",
+            name="PreTool",
+            type=localharness_pb2.LIFECYCLE_HOOK_PRE_TOOL,
+            pre_tool_args=localharness_pb2.PreToolArgs(
+                tool_name=wire_name,
+                arguments_json="{}",
+            ),
+        )
 
-      await router.handle(req)
+        await router.handle(req)
 
-      self.assertLen(captured_tool_calls, 1)
-      self.assertEqual(captured_tool_calls[0].name, "start_subagent")
+      self.assertLen(captured_tool_calls, 2)
+      self.assertEqual(captured_tool_calls[0].name, "invoke_subagent")
+      self.assertEqual(captured_tool_calls[1].name, "invoke_subagent")
 
     asyncio.run(_test())
 

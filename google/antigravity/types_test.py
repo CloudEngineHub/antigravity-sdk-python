@@ -619,7 +619,11 @@ class BuiltinToolsTest(parameterized.TestCase):
           types.BuiltinTools.READ_URL_CONTENT,
           "read_url_content",
       ),
-      ("start_subagent", types.BuiltinTools.START_SUBAGENT, "start_subagent"),
+      (
+          "invoke_subagent",
+          types.BuiltinTools.INVOKE_SUBAGENT,
+          "invoke_subagent",
+      ),
       ("run_workflow", types.BuiltinTools.RUN_WORKFLOW, "run_workflow"),
       ("generate_image", types.BuiltinTools.GENERATE_IMAGE, "generate_image"),
       ("schedule", types.BuiltinTools.SCHEDULE, "schedule"),
@@ -654,7 +658,7 @@ class BuiltinToolsTest(parameterized.TestCase):
         types.BuiltinTools.EDIT_FILE,
         types.BuiltinTools.RUN_COMMAND,
         types.BuiltinTools.ASK_QUESTION,
-        types.BuiltinTools.START_SUBAGENT,
+        types.BuiltinTools.INVOKE_SUBAGENT,
         types.BuiltinTools.RUN_WORKFLOW,
         types.BuiltinTools.GENERATE_IMAGE,
         types.BuiltinTools.SEARCH_WEB,
@@ -673,6 +677,48 @@ class BuiltinToolsTest(parameterized.TestCase):
         read_only & write_tools,
         "read_only and write_tools must not overlap.",
     )
+
+  def test_start_subagent_alias_and_string_coercion(self):
+    """Verifies START_SUBAGENT alias, deprecation warning, and coercion."""
+    with self.assertWarns(DeprecationWarning):
+      alias = types.BuiltinTools.START_SUBAGENT
+    self.assertIs(alias, types.BuiltinTools.INVOKE_SUBAGENT)
+    self.assertEqual(
+        types.BuiltinTools.INVOKE_SUBAGENT.value, "invoke_subagent"
+    )
+    self.assertEqual(str(types.BuiltinTools.INVOKE_SUBAGENT), "invoke_subagent")
+    self.assertEqual(alias.value, "invoke_subagent")
+    with self.assertWarns(DeprecationWarning):
+      coerced = types.BuiltinTools("start_subagent")
+    self.assertIs(coerced, types.BuiltinTools.INVOKE_SUBAGENT)
+    with self.assertRaises(ValueError):
+      types.BuiltinTools("unknown_tool")
+    with self.assertWarns(DeprecationWarning):
+      cfg = types.CapabilitiesConfig(
+          enabled_tools=["start_subagent"],
+      )
+    self.assertEqual(cfg.enabled_tools, [types.BuiltinTools.INVOKE_SUBAGENT])
+    with self.assertWarns(DeprecationWarning):
+      cfg_disabled = types.CapabilitiesConfig(
+          disabled_tools=["start_subagent"],
+      )
+    self.assertEqual(
+        cfg_disabled.disabled_tools, [types.BuiltinTools.INVOKE_SUBAGENT]
+    )
+    tc = types.ToolCall(name="start_subagent", args={"TypeName": "helper"})
+    self.assertEqual(tc.name, types.BuiltinTools.INVOKE_SUBAGENT)
+    self.assertIs(type(tc.name), str)
+    tc_mcp = types.ToolCall(
+        name="start_subagent", server_name="mcp", args={"TypeName": "helper"}
+    )
+    self.assertEqual(tc_mcp.name, "start_subagent")
+    tr = types.ToolResult(name="start_subagent", result="ok")
+    self.assertEqual(tr.name, types.BuiltinTools.INVOKE_SUBAGENT)
+    self.assertIs(type(tr.name), str)
+    tr_mcp = types.ToolResult(
+        name="start_subagent", server_name="mcp", result="ok"
+    )
+    self.assertEqual(tr_mcp.name, "start_subagent")
 
   def test_nondestructive_covers_all_tools(self):
     """Verifies nondestructive + deprecated + destructive tools = full enum.
@@ -947,34 +993,34 @@ class CapabilitiesConfigTest(unittest.TestCase):
       )
     self.assertIn("allowed_subagents cannot be specified", str(cm.exception))
 
-  def test_max_subagent_depth_fails_when_start_subagent_tool_disabled(self):
-    """Verifies ValidationError when START_SUBAGENT and RUN_WORKFLOW are in disabled_tools."""
+  def test_max_subagent_depth_fails_when_invoke_subagent_tool_disabled(self):
+    """Verifies ValidationError when INVOKE_SUBAGENT and RUN_WORKFLOW are in disabled_tools."""
     with self.assertRaises(pydantic.ValidationError) as cm:
       types.CapabilitiesConfig(
           disabled_tools=[
-              types.BuiltinTools.START_SUBAGENT,
+              types.BuiltinTools.INVOKE_SUBAGENT,
               types.BuiltinTools.RUN_WORKFLOW,
           ],
           max_subagent_depth=3,
       )
     self.assertIn("max_subagent_depth cannot be configured", str(cm.exception))
 
-  def test_allowed_subagents_fails_when_start_subagent_tool_disabled(self):
-    """Verifies ValidationError when START_SUBAGENT and RUN_WORKFLOW are in disabled_tools and allowed_subagents is set."""
+  def test_allowed_subagents_fails_when_invoke_subagent_tool_disabled(self):
+    """Verifies ValidationError when INVOKE_SUBAGENT and RUN_WORKFLOW are in disabled_tools and allowed_subagents is set."""
     with self.assertRaises(pydantic.ValidationError) as cm:
       types.CapabilitiesConfig(
           disabled_tools=[
-              types.BuiltinTools.START_SUBAGENT,
+              types.BuiltinTools.INVOKE_SUBAGENT,
               types.BuiltinTools.RUN_WORKFLOW,
           ],
           allowed_subagents=["worker"],
       )
     self.assertIn("allowed_subagents cannot be specified", str(cm.exception))
 
-  def test_max_subagent_depth_fails_when_start_subagent_not_in_enabled_tools(
+  def test_max_subagent_depth_fails_when_invoke_subagent_not_in_enabled_tools(
       self,
   ):
-    """Verifies ValidationError when START_SUBAGENT is omitted from enabled_tools."""
+    """Verifies ValidationError when INVOKE_SUBAGENT is omitted from enabled_tools."""
     with self.assertRaises(pydantic.ValidationError) as cm:
       types.CapabilitiesConfig(
           enabled_tools=[types.BuiltinTools.VIEW_FILE],
@@ -982,10 +1028,10 @@ class CapabilitiesConfigTest(unittest.TestCase):
       )
     self.assertIn("max_subagent_depth cannot be configured", str(cm.exception))
 
-  def test_allowed_subagents_fails_when_start_subagent_not_in_enabled_tools(
+  def test_allowed_subagents_fails_when_invoke_subagent_not_in_enabled_tools(
       self,
   ):
-    """Verifies ValidationError when START_SUBAGENT is omitted from enabled_tools and allowed_subagents is set."""
+    """Verifies ValidationError when INVOKE_SUBAGENT is omitted from enabled_tools and allowed_subagents is set."""
     with self.assertRaises(pydantic.ValidationError) as cm:
       types.CapabilitiesConfig(
           enabled_tools=[types.BuiltinTools.VIEW_FILE],
@@ -1008,19 +1054,19 @@ class CapabilitiesConfigTest(unittest.TestCase):
     )
     self.assertEqual(sub_caps.allowed_subagents, ["worker"])
 
-  def test_disabling_only_start_subagent_permits_subagent_options_for_run_workflow(
+  def test_disabling_only_invoke_subagent_permits_subagent_options_for_run_workflow(
       self,
   ):
-    """Verifies disabling START_SUBAGENT while leaving RUN_WORKFLOW enabled permits subagent options."""
+    """Verifies disabling INVOKE_SUBAGENT while leaving RUN_WORKFLOW enabled permits subagent options."""
     cfg = types.CapabilitiesConfig(
-        disabled_tools=[types.BuiltinTools.START_SUBAGENT],
+        disabled_tools=[types.BuiltinTools.INVOKE_SUBAGENT],
         max_subagent_depth=2,
         allowed_subagents=["worker"],
     )
     self.assertEqual(cfg.max_subagent_depth, 2)
     self.assertEqual(cfg.allowed_subagents, ["worker"])
     sub_caps = types.SubagentCapabilities(
-        disabled_tools=[types.BuiltinTools.START_SUBAGENT],
+        disabled_tools=[types.BuiltinTools.INVOKE_SUBAGENT],
         allowed_subagents=["worker"],
     )
     self.assertEqual(sub_caps.allowed_subagents, ["worker"])
@@ -2216,31 +2262,33 @@ class SubagentCapabilitiesTest(unittest.TestCase):
           disabled_tools=[types.BuiltinTools.RUN_COMMAND],
       )
 
-  def test_allowed_subagents_valid_when_start_subagent_enabled(self):
+  def test_allowed_subagents_valid_when_invoke_subagent_enabled(self):
     sc = types.SubagentCapabilities(
-        enabled_tools=[types.BuiltinTools.START_SUBAGENT],
+        enabled_tools=[types.BuiltinTools.INVOKE_SUBAGENT],
         allowed_subagents=["worker"],
     )
     self.assertEqual(sc.allowed_subagents, ["worker"])
 
-  def test_allowed_subagents_raises_when_start_subagent_omitted_from_enabled_tools(
+  def test_allowed_subagents_raises_when_invoke_subagent_omitted_from_enabled_tools(
       self,
   ):
     with self.assertRaisesRegex(
-        pydantic.ValidationError, "START_SUBAGENT is disabled or omitted"
+        pydantic.ValidationError, "INVOKE_SUBAGENT is disabled or omitted"
     ):
       types.SubagentCapabilities(
           enabled_tools=[types.BuiltinTools.VIEW_FILE],
           allowed_subagents=["worker"],
       )
 
-  def test_allowed_subagents_raises_when_start_subagent_in_disabled_tools(self):
+  def test_allowed_subagents_raises_when_invoke_subagent_in_disabled_tools(
+      self,
+  ):
     with self.assertRaisesRegex(
-        pydantic.ValidationError, "START_SUBAGENT is disabled or omitted"
+        pydantic.ValidationError, "INVOKE_SUBAGENT is disabled or omitted"
     ):
       types.SubagentCapabilities(
           disabled_tools=[
-              types.BuiltinTools.START_SUBAGENT,
+              types.BuiltinTools.INVOKE_SUBAGENT,
               types.BuiltinTools.RUN_WORKFLOW,
           ],
           allowed_subagents=["worker"],
