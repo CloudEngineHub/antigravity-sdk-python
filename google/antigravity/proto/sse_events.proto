@@ -25,6 +25,7 @@ import "google/antigravity/proto/genai_json_annotations.proto";
 message InteractionStatusUpdate {
   string interaction_id = 1;
   .genai.Interaction.Status status = 2;
+  bytes continuation_token = 3;
 }
 message ContentStart {
   int32 index = 1;
