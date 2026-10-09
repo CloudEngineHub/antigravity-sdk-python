@@ -16,6 +16,23 @@ edition = "2024";
 
 package genai;
 
+import "google/antigravity/proto/content.proto";
 import "google/antigravity/proto/genai_json_annotations.proto";
 
 option features = { field_presence : IMPLICIT enum_type : OPEN utf8_validation : NONE };
+
+message UserInputContent {
+  oneof type {
+    option (gaos.parsing.subtype_source) = true;
+
+    .genai.TextContent text = 10;
+    .genai.ImageContent image = 11;
+    .genai.AudioContent audio = 12;
+    .genai.DocumentContent document = 13;
+    .genai.VideoContent video = 14;
+    .genai.SlashCommand slash_command = 15;
+  }
+}
+message SlashCommand {
+  string name = 1;
+}

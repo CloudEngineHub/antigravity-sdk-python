@@ -27,6 +27,7 @@ import "google/antigravity/proto/models.proto";
 import "google/antigravity/proto/sse_events.proto";
 import "google/antigravity/proto/state_update.proto";
 import "google/antigravity/proto/tools.proto";
+import "google/antigravity/proto/user_steps.proto";
 import "google/antigravity/proto/genai_json_annotations.proto";
 
 option features = { field_presence : IMPLICIT enum_type : OPEN utf8_validation : NONE };
@@ -188,10 +189,7 @@ message Payload {
   string sub_interaction_id = 6;
 }
 message InputEvent {
-  message SlashCommand {
-    string name = 1;
-  }
   repeated .genai.Content content = 1;
-  .genai.InputEvent.SlashCommand slash_command = 5;
+  repeated .genai.UserInputContent input_content = 6;
   .genai.InputDeliveryMode mode = 3;
 }

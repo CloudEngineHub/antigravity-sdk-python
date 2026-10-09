@@ -18,6 +18,7 @@ package genai;
 
 import "google/antigravity/proto/content.proto";
 import "google/antigravity/proto/elicitation.proto";
+import "google/antigravity/proto/user_steps.proto";
 import "google/antigravity/proto/genai_json_annotations.proto";
 
 message StepList {
@@ -276,6 +277,7 @@ message UserInputStep {
     .genai.ContentList content_list = 2;
     string content_string = 3;
   }
+  repeated .genai.UserInputContent input_content = 5;
 }
 message ModelOutputStep {
   repeated .genai.Content content = 1;

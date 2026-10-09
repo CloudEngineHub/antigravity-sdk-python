@@ -831,36 +831,35 @@ def _slash_command_name(sc: types.SlashCommand) -> str:
   return sc.name.value if hasattr(sc.name, "value") else str(sc.name)
 
 
+def _primitive_to_input_content_dict(
+    item: types.ContentPrimitive,
+) -> dict[str, Any]:
+  """Converts an SDK primitive into a GAOS UserInputContent dict."""
+  if isinstance(item, types.SlashCommand):
+    return {"type": "slash_command", "name": _slash_command_name(item)}
+  return _primitive_to_content_dict(item)
+
+
 def content_to_user_input_event(content: types.Content) -> dict[str, Any]:
   """Converts SDK Content into a GAOS ExternalClientEvent (InputEvent)."""
-  if isinstance(content, types.SlashCommand):
-    return {
-        "event_type": "input",
-        "slash_command": {"name": _slash_command_name(content)},
-    }
-
   items = (
       [content]
       if isinstance(content, str) or not isinstance(content, Sequence)
       else list(content)
   )
-  slash_commands = [
-      item for item in items if isinstance(item, types.SlashCommand)
-  ]
-  if len(slash_commands) > 1:
-    raise ValueError("At most one SlashCommand can be provided per turn.")
-  other_items = [
-      item for item in items if not isinstance(item, types.SlashCommand)
-  ]
-
-  event: dict[str, Any] = {"event_type": "input"}
-  if slash_commands:
-    event["slash_command"] = {"name": _slash_command_name(slash_commands[0])}
-  if other_items or not slash_commands:
-    event["content"] = [
-        _primitive_to_content_dict(item) for item in other_items
-    ]
-  return event
+  if not any(isinstance(item, types.SlashCommand) for item in items):
+    return {
+        "event_type": "input",
+        "content": [_primitive_to_content_dict(item) for item in items],
+    }
+  # Slash commands can only be expressed in input_content, where they may
+  # be interleaved with other content.
+  return {
+      "event_type": "input",
+      "input_content": [
+          _primitive_to_input_content_dict(item) for item in items
+      ],
+  }
 
 
 def tool_result_to_function_result_event(

@@ -43,48 +43,59 @@ _STOP_REASON_JSON_MAP: dict[str, types.StopReason] = {
 }
 
 
+def _content_items_to_content(items: list[Any]) -> types.Content:
+  """Converts a list of GAOS Content / UserInputContent dicts into SDK Content."""
+  content_list: list[types.ContentPrimitive] = []
+  for item in items:
+    if not isinstance(item, dict):
+      continue
+    item_type = item.get("type")
+    if item_type == "text":
+      content_list.append(str(item.get("text", "")))
+    elif item_type == "slash_command":
+      try:
+        content_list.append(
+            types.SlashCommand(
+                name=types.BuiltinSlashCommandName(str(item.get("name", "")))
+            )
+        )
+      except ValueError:
+        pass
+    elif item_type in ("image", "audio", "video", "document"):
+      raw_b64 = item.get("data", "")
+      data_bytes = (
+          base64.b64decode(raw_b64) if isinstance(raw_b64, str) else b""
+      )
+      try:
+        content_list.append(
+            types.from_bytes(
+                data=data_bytes,
+                mime_type=str(item.get("mime_type", "")),
+            )
+        )
+      except ValueError:
+        pass
+  if not content_list:
+    return ""
+  if len(content_list) == 1:
+    return content_list[0]
+  return content_list
+
+
 def _user_input_step_dict_to_content(ui_dict: dict[str, Any]) -> types.Content:
   """Converts a GAOS UserInputStep dict directly into SDK types.Content."""
+  input_content = ui_dict.get("input_content")
+  if isinstance(input_content, list) and input_content:
+    return _content_items_to_content(input_content)
   content = ui_dict.get("content")
   if isinstance(content, str):
     return content
   if isinstance(content, dict):
-    if "name" in content and "type" not in content:
-      try:
-        sc_name = types.BuiltinSlashCommandName(str(content["name"]))
-        return types.SlashCommand(name=sc_name)
-      except ValueError:
-        return ""
     if content.get("type") == "text":
       return str(content.get("text", ""))
     return ""
   if isinstance(content, list):
-    content_list: list[types.ContentPrimitive] = []
-    for item in content:
-      if not isinstance(item, dict):
-        continue
-      item_type = item.get("type")
-      if item_type == "text":
-        content_list.append(str(item.get("text", "")))
-      elif item_type in ("image", "audio", "video", "document"):
-        raw_b64 = item.get("data", "")
-        data_bytes = (
-            base64.b64decode(raw_b64) if isinstance(raw_b64, str) else b""
-        )
-        try:
-          content_list.append(
-              types.from_bytes(
-                  data=data_bytes,
-                  mime_type=str(item.get("mime_type", "")),
-              )
-          )
-        except ValueError:
-          pass
-    if not content_list:
-      return ""
-    if len(content_list) == 1:
-      return content_list[0]
-    return content_list
+    return _content_items_to_content(content)
   return ""
 
 
