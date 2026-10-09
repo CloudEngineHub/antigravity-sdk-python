@@ -116,6 +116,7 @@ message HarnessConfig {
   .antigravity.localharness.CompactionConfig compaction_config = 24;
   .antigravity.localharness.SkillsConfig skills_config = 27;
   .antigravity.localharness.RulesConfig rules_config = 28;
+  int32 mcp_max_output_bytes = 29;
   extensions 1000 to 1999;
   extensions 2000 to max;
 }
