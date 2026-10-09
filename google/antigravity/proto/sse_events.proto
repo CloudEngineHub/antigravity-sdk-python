@@ -26,6 +26,7 @@ message InteractionStatusUpdate {
   string interaction_id = 1;
   .genai.Interaction.Status status = 2;
   bytes continuation_token = 3;
+  .genai.Interaction.Usage usage = 5;
 }
 message ContentStart {
   int32 index = 1;
