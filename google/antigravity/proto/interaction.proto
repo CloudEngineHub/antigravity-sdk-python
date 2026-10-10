@@ -86,6 +86,7 @@ message Interaction {
     CANCELLED = 10;
     INCOMPLETE = 11;
     BUDGET_EXCEEDED = 12;
+    CONTINUATION_REQUIRED = 17;
   }
   oneof input {
     option (gaos.parsing.is_union) = true;
