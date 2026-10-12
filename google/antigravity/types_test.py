@@ -683,6 +683,9 @@ class BuiltinToolsTest(parameterized.TestCase):
     with self.assertWarns(DeprecationWarning):
       alias = types.BuiltinTools.START_SUBAGENT
     self.assertIs(alias, types.BuiltinTools.INVOKE_SUBAGENT)
+    self.assertIs(
+        types.BuiltinTools["START_SUBAGENT"], types.BuiltinTools.INVOKE_SUBAGENT
+    )
     self.assertEqual(
         types.BuiltinTools.INVOKE_SUBAGENT.value, "invoke_subagent"
     )
@@ -719,6 +722,16 @@ class BuiltinToolsTest(parameterized.TestCase):
         name="start_subagent", server_name="mcp", result="ok"
     )
     self.assertEqual(tr_mcp.name, "start_subagent")
+    mock_tc = mock.MagicMock(spec=types.ToolCall)
+    mock_tc.name = "finish"
+    mock_tc.args = None
+    mock_tr = mock.MagicMock(spec=types.ToolResult)
+    mock_tr.name = "finish"
+    step = types.Step(
+        step_index=1, tool_calls=[mock_tc], tool_results=[mock_tr]
+    )
+    self.assertEqual(step.tool_calls[0].name, "finish")
+    self.assertEqual(step.tool_results[0].name, "finish")
 
   def test_nondestructive_covers_all_tools(self):
     """Verifies nondestructive + deprecated + destructive tools = full enum.

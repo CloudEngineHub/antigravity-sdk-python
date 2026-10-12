@@ -678,11 +678,14 @@ class BuiltinTools(str, enum.Enum):
     return [t for t in cls if t not in excluded]
 
 
+BuiltinTools._member_map_["START_SUBAGENT"] = BuiltinTools.INVOKE_SUBAGENT  # pylint: disable=protected-access
+
+
 def normalize_builtin_tool_name(
     name: BuiltinTools | str, *, server_name: str | None = None
 ) -> BuiltinTools | str:
   """Normalizes deprecated builtin tool name aliases unless scoped to an MCP server."""
-  if not server_name and name == DEPRECATED_START_SUBAGENT:
+  if name == DEPRECATED_START_SUBAGENT and not server_name:
     return BuiltinTools.INVOKE_SUBAGENT.value
   return name
 
@@ -1043,7 +1046,7 @@ class ToolCall(pydantic.BaseModel):
   @pydantic.model_validator(mode="after")
   def _normalize_builtin_name(self) -> "ToolCall":
     self.name = normalize_builtin_tool_name(
-        self.name, server_name=self.server_name
+        self.name, server_name=getattr(self, "server_name", None)
     )
     return self
 
@@ -1077,7 +1080,7 @@ class ToolResult(pydantic.BaseModel):
   @pydantic.model_validator(mode="after")
   def _normalize_builtin_name(self) -> "ToolResult":
     self.name = normalize_builtin_tool_name(
-        self.name, server_name=self.server_name
+        self.name, server_name=getattr(self, "server_name", None)
     )
     return self
 
