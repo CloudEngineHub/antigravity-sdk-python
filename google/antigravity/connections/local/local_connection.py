@@ -1371,6 +1371,11 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       if trunc_proto is not None:
         harness_config.tool_output_truncation.CopyFrom(trunc_proto)
 
+    if self._capabilities_config.mcp_max_output_bytes is not None:
+      harness_config.mcp_max_output_bytes = (
+          self._capabilities_config.mcp_max_output_bytes
+      )
+
     if self._policies:
       policy_config, self._dynamic_policy_map = policy._to_policy_config_proto(
           self._policies

@@ -104,6 +104,20 @@ stdio_server = types.McpStdioServer(
 )
 ```
 
+## Configuring Output Size Limits (`mcp_max_output_bytes`)
+
+By default, MCP tool outputs and resource reads larger than `4096` bytes are
+offloaded to a temporary file on disk instead of being inlined directly into the
+model's context. For MCP servers that return large structured payloads or
+when file-read tools (`view_file`) are disabled, you can increase this session
+limit on `CapabilitiesConfig`:
+
+```python
+capabilities = types.CapabilitiesConfig(
+    mcp_max_output_bytes=65536,  # Inline MCP outputs up to 64 KiB
+)
+```
+
 ## Accessing Tools & Safety Policies
 
 Tools exposed by the MCP server are automatically registered with the agent. To

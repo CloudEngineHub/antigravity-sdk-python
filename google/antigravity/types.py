@@ -740,6 +740,10 @@ class CapabilitiesConfig(pydantic.BaseModel):
     run_command_config: Optional configuration for the builtin run_command tool.
     tool_output_truncation_config: Optional configuration or token limit for
       truncating large tool outputs (preserves beginning, truncates end).
+    mcp_max_output_bytes: Maximum size in bytes of an MCP tool output or
+      resource read before the runtime spills the output to a file on disk
+      instead of inlining it in the model context. Must be positive when
+      specified. When None, the runtime's default limit (4096 bytes) is used.
   """
 
   enable_subagents: bool = True
@@ -760,6 +764,9 @@ class CapabilitiesConfig(pydantic.BaseModel):
   allowed_subagents: list[str] | None = None
   run_command_config: RunCommandConfig | None = None
   tool_output_truncation_config: ToolOutputTruncationConfig | None = None
+  mcp_max_output_bytes: int | None = pydantic.Field(
+      default=None, gt=0, le=_MAX_INT32
+  )
 
   @pydantic.field_validator("tool_output_truncation_config", mode="before")
   @classmethod

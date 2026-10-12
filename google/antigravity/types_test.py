@@ -808,6 +808,16 @@ class CapabilitiesConfigTest(unittest.TestCase):
     self.assertIsNone(config.disabled_tools)
     self.assertIsNone(config.compaction_threshold)
     self.assertIsNone(config.finish_tool_schema_json)
+    self.assertIsNone(config.mcp_max_output_bytes)
+
+  def test_mcp_max_output_bytes(self):
+    """Verifies that mcp_max_output_bytes accepts positive int32 values and rejects invalid values."""
+    config = types.CapabilitiesConfig(mcp_max_output_bytes=65536)
+    self.assertEqual(config.mcp_max_output_bytes, 65536)
+    for invalid_bytes in (0, -1, 2**31):
+      with self.subTest(invalid_bytes=invalid_bytes):
+        with self.assertRaises(pydantic.ValidationError):
+          types.CapabilitiesConfig(mcp_max_output_bytes=invalid_bytes)
 
   def test_agent_behavior_explicit(self):
     """Verifies that agent_behavior can be explicitly set via enum or string."""

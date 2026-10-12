@@ -5746,6 +5746,7 @@ class LocalAgentConfigTest(absltest.TestCase):
     config = local_connection_config.LocalAgentConfig(
         system_instructions="test",
         mcp_servers=[stdio_cfg, sse_cfg],
+        capabilities=types.CapabilitiesConfig(mcp_max_output_bytes=65536),
         api_key="fake",
     )
 
@@ -5763,6 +5764,8 @@ class LocalAgentConfigTest(absltest.TestCase):
 
     harness_pb = strategy._build_harness_config()
 
+    self.assertTrue(harness_pb.HasField("mcp_max_output_bytes"))
+    self.assertEqual(harness_pb.mcp_max_output_bytes, 65536)
     self.assertLen(harness_pb.mcp_servers, 2)
 
     stdio_pb = harness_pb.mcp_servers[0]
