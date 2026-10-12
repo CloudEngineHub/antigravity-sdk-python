@@ -61,6 +61,7 @@ message FileCitationRenderingInfoMetadata {
   .genai.SheetAnchorRenderingMetadata sheets_anchor_rendering_metadata = 8;
   .genai.WorkspaceRenderingMetadata workspace_rendering_metadata = 9;
   .genai.CommentThreadRenderingMetadata comment_thread_rendering_metadata = 10;
+  .genai.MeetAnchorRenderingMetadata meet_anchor_rendering_metadata = 11;
 }
 message ChatAnchorRenderingMetadata {
   message ChatAttachment {
@@ -108,4 +109,15 @@ message CommentThreadRenderingMetadata {
   string author_name = 1;
   string comment_snippet = 2;
   .google.protobuf.Timestamp create_time = 3;
+}
+message MeetAnchorRenderingMetadata {
+  enum ContextType {
+    CONTEXT_TYPE_UNSPECIFIED = 0;
+    TRANSCRIPT = 1;
+    ATTENDANCE = 2;
+    CALENDAR = 3;
+    BRIEF = 4;
+    PRESENTATION_SCREENSHOTS = 5;
+  }
+  .genai.MeetAnchorRenderingMetadata.ContextType context_type = 1;
 }
