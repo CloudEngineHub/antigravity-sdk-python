@@ -44,6 +44,7 @@ message Step {
     .genai.ToolResultStep tool_result = 5;
     .genai.ElicitationCallStep elicitation_call = 13;
     .genai.ElicitationResultStep elicitation_result = 14;
+    .genai.CompactionStep compaction = 11;
     .genai.UserInputStep user_input = 1;
     .genai.ModelOutputStep model_output = 2;
     .genai.LegacyTextContent text = 6;
@@ -65,6 +66,9 @@ message ThoughtStep {
     (gaos.parsing.json_discriminator_values) = "image",
     (gaos.parsing.sub_content_name) = "ThoughtContent"
   ];
+}
+message CompactionStep {
+  bytes signature = 1;
 }
 message ToolCallStep {
   oneof type {

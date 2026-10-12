@@ -330,10 +330,7 @@ class InteractionsEventProcessorTest(unittest.IsolatedAsyncioTestCase):
             "empty_result": {},
         },
     )
-    compaction_step = proc.step_queue.get_nowait()
-    self.assertEqual(compaction_step.type, types.StepType.COMPACTION)
-    self.assertEqual(compaction_step.content, "Compacted summary")
-    self.assertEqual(compaction_step.id, "root-1:5")
+    self.assertTrue(proc.step_queue.empty())
 
     # 7. Stop
     await proc.process_event({
@@ -669,6 +666,57 @@ class InteractionsEventProcessorTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(resp_chart["call_id"], "call-chart-1")
     self.assertFalse(resp_chart["is_error"])
     self.assertEqual(resp_chart["result"], {"result": None})
+
+  async def test_compaction_step_stream(self):
+    proc = interactions_event_processor.InteractionsEventProcessor(
+        send_json_event_fn=self._send_json_event,
+        root_interaction_id="conv-1",
+    )
+
+    await proc.process_event({
+        "event_type": "step.start",
+        "index": 3,
+        "step": {
+            "type": "compaction",
+            "description": "Context compaction",
+        },
+    })
+    step_active = proc.step_queue.get_nowait()
+    self.assertEqual(step_active.type, types.StepType.COMPACTION)
+    self.assertEqual(step_active.status, types.StepStatus.ACTIVE)
+    self.assertEqual(step_active.content, "Context compaction")
+
+    await proc.process_event({
+        "event_type": "step.stop",
+        "index": 3,
+    })
+    step_done = proc.step_queue.get_nowait()
+    self.assertEqual(step_done.type, types.StepType.COMPACTION)
+    self.assertEqual(step_done.status, types.StepStatus.DONE)
+
+    # Sub-trajectory compaction step with default description
+    await proc.process_event({
+        "event_type": "step.start",
+        "sub_interaction_id": "sub-conv-1",
+        "index": 1,
+        "step": {"type": "compaction"},
+    })
+    sub_active = proc.step_queue.get_nowait()
+    self.assertEqual(sub_active.type, types.StepType.COMPACTION)
+    self.assertEqual(sub_active.trajectory_id, "sub-conv-1")
+    self.assertEqual(sub_active.status, types.StepStatus.ACTIVE)
+    self.assertEqual(sub_active.content, "Context compaction")
+
+    await proc.process_event({
+        "event_type": "step.stop",
+        "sub_interaction_id": "sub-conv-1",
+        "index": 1,
+    })
+    sub_done = proc.step_queue.get_nowait()
+    self.assertEqual(sub_done.type, types.StepType.COMPACTION)
+    self.assertEqual(sub_done.trajectory_id, "sub-conv-1")
+    self.assertEqual(sub_done.status, types.StepStatus.DONE)
+    self.assertTrue(proc.step_queue.empty())
 
 
 class UserInputStepDictToContentTest(absltest.TestCase):

@@ -413,6 +413,31 @@ class InteractionsStepAssembler:
           trajectory_id=traj_id,
       )
 
+    if subtype == "compaction":
+      compaction_text = description or "Context compaction"
+      state = _AssembledStepState(
+          trajectory_id=traj_id,
+          parent_trajectory_id=parent_traj_id,
+          depth=depth,
+          step_index=step_idx,
+          step_subtype=subtype,
+          step_type=types.StepType.COMPACTION,
+          source=types.StepSource.SYSTEM,
+          target=types.StepTarget.USER,
+          description=compaction_text,
+          content=compaction_text,
+      )
+      self._steps[(traj_id, step_idx)] = state
+      step_obj = self._build_step_object(
+          state,
+          status=types.StepStatus.ACTIVE,
+      )
+      return StepAssemblyResult(
+          step=step_obj,
+          dispatch_pre=True,
+          trajectory_id=traj_id,
+      )
+
     if subtype == "elicitation_call":
       elicitation = _parse_elicitation_call(step_dict, traj_id, step_idx)
       el_call_id = (

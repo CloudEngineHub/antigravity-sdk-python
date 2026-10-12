@@ -253,12 +253,6 @@ class InteractionsEventProcessor(event_processor.BaseLocalEventProcessor):
 
   async def _handle_call_hook_request(self, event: dict[str, Any]) -> None:
     """Handles a GAOS call_hook_request event directly against HookRunner."""
-    if str(event.get("type", "")) == "on_compaction":
-      compaction_step = self._build_compaction_step(event)
-      await self._emit_step(
-          compaction_step, dispatch_pre=True, dispatch_post=True
-      )
-
     self._run_in_background(self._dispatch_hook_request(event))
 
   async def _dispatch_hook_request(self, event: dict[str, Any]) -> None:
