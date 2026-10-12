@@ -349,16 +349,19 @@ class InteractionsConfigConverterTest(absltest.TestCase):
           ]
       )
 
-    with self.assertRaises(types.AntigravityValidationError):
-      interactions_config_converter.build_create_interaction_event(
-          subagents=[
-              types.SubagentConfig(
-                  name="s_model",
-                  description="Model override unsupported",
-                  model="gemini-2.5-flash",
-              )
-          ]
-      )
+    ev_model = interactions_config_converter.build_create_interaction_event(
+        subagents=[
+            types.SubagentConfig(
+                name="s_model",
+                description="Pinned model subagent",
+                model="gemini-2.5-flash",
+            )
+        ]
+    )
+    sa_model = ev_model["agent_config"]["subagents_config"]["custom_subagents"][
+        0
+    ]
+    self.assertEqual(sa_model["model"], {"name": "gemini-2.5-flash"})
 
   def test_create_interaction_agent_config_fields(self):
     hr = hook_runner.HookRunner(

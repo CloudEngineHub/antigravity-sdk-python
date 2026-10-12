@@ -153,6 +153,7 @@ message AntigravityAgentConfig {
       .genai.AgentPolicy policy = 9;
       .genai.AntigravityAgentConfig.AntigravitySubagentsConfig.AllowedSubagents
           allowed_subagents = 10;
+      .genai.AntigravityAgentConfig.ModelConfig model = 11;
     }
     repeated .genai.AntigravityAgentConfig.AntigravitySubagentsConfig
         .CustomAgent custom_subagents = 1;

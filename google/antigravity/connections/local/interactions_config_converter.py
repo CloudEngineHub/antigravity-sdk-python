@@ -363,17 +363,14 @@ def _translate_custom_subagent(
     tool_runner: t_runner.ToolRunner | None = None,
 ) -> dict[str, Any]:
   """Translates an SDK SubagentConfig to an AntigravitySubagentsConfig.CustomAgent dict."""
-  if subagent.model is not None:
-    raise types.AntigravityValidationError(
-        f"Subagent '{subagent.name}' sets 'model', which is not supported by"
-        " InteractionsAgentConfig."
-    )
   capabilities = subagent.capabilities or types.SubagentCapabilities(
       enabled_tools=types.BuiltinTools.read_only(),
   )
   sa_dict: dict[str, Any] = {"name": subagent.name}
   if subagent.description:
     sa_dict["description"] = subagent.description
+  if subagent.model is not None:
+    sa_dict["model"] = {"name": subagent.model}
   _translate_system_instructions(subagent.system_instructions, sa_dict)
 
   resolved_subagent_tools: list[dict[str, Any]] = []
