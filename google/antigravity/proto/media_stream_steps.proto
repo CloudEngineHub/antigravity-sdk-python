@@ -30,4 +30,5 @@ message MediaStreamAppend {
 }
 message AudioStreamAppend {
   bytes data = 1;
+  string stream_id = 2;
 }
