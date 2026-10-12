@@ -121,7 +121,7 @@ class OtelHooksTest(unittest.IsolatedAsyncioTestCase):
     op_ctx_start_sub = hooks_base.OperationContext(turn_ctx)
     tool_call_sub = types.ToolCall(
         id="parent_traj:1",
-        name=types.BuiltinTools.START_SUBAGENT.value,
+        name=types.BuiltinTools.INVOKE_SUBAGENT.value,
         args={"TypeName": "SubAgentCoder"},
     )
     await otel_hooks.OTelPreToolCallHook().run(op_ctx_start_sub, tool_call_sub)
@@ -159,7 +159,7 @@ class OtelHooksTest(unittest.IsolatedAsyncioTestCase):
     op_ctx_start_sub.set_state("trajectory_id", "sub_traj")
     await otel_hooks.OTelPostToolCallHook().run(
         op_ctx_start_sub,
-        types.ToolResult(name=types.BuiltinTools.START_SUBAGENT.value),
+        types.ToolResult(name=types.BuiltinTools.INVOKE_SUBAGENT.value),
     )
 
     await otel_hooks.OTelPostTurnHook().run(turn_ctx, "done")
@@ -353,7 +353,7 @@ class OtelHooksTest(unittest.IsolatedAsyncioTestCase):
         op_ctx_sub,
         types.ToolCall(
             id="traj:2",
-            name=types.BuiltinTools.START_SUBAGENT.value,
+            name=types.BuiltinTools.INVOKE_SUBAGENT.value,
             args={"Role": "AutoCleanupSubAgent"},
         ),
     )
@@ -374,7 +374,7 @@ class OtelHooksTest(unittest.IsolatedAsyncioTestCase):
     # subagent span.
     await otel_hooks.OTelPostToolCallHook().run(
         op_ctx_sub,
-        types.ToolResult(name=types.BuiltinTools.START_SUBAGENT.value),
+        types.ToolResult(name=types.BuiltinTools.INVOKE_SUBAGENT.value),
     )
 
     await otel_hooks.OTelPostTurnHook().run(turn_ctx, "done")

@@ -1040,7 +1040,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
 
     if isinstance(cfg, types.CapabilitiesConfig):
       subagent_enabled = cfg.enable_subagents and (
-          types.BuiltinTools.START_SUBAGENT in active_tools
+          types.BuiltinTools.INVOKE_SUBAGENT in active_tools
       )
       run_workflow_enabled = cfg.enable_subagents and (
           types.BuiltinTools.RUN_WORKFLOW in active_tools
@@ -1048,7 +1048,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
       max_depth = cfg.max_subagent_depth
       allowed_subagents = cfg.allowed_subagents or []
     elif isinstance(cfg, types.SubagentCapabilities):
-      subagent_enabled = types.BuiltinTools.START_SUBAGENT in active_tools
+      subagent_enabled = types.BuiltinTools.INVOKE_SUBAGENT in active_tools
       run_workflow_enabled = types.BuiltinTools.RUN_WORKFLOW in active_tools
       allowed_subagents = cfg.allowed_subagents or []
 

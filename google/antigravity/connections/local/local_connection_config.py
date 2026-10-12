@@ -45,7 +45,7 @@ BUILTIN_TOOL_PROTO_FIELDS: dict[types.BuiltinTools, str] = {
     types.BuiltinTools.RUN_COMMAND: "run_command",
     types.BuiltinTools.SEARCH_DIR: "search_directory",
     types.BuiltinTools.VIEW_FILE: "view_file",
-    types.BuiltinTools.START_SUBAGENT: "invoke_subagent",
+    types.BuiltinTools.INVOKE_SUBAGENT: "invoke_subagent",
     types.BuiltinTools.RUN_WORKFLOW: "run_workflow",
     types.BuiltinTools.GENERATE_IMAGE: "generate_image",
     types.BuiltinTools.SEARCH_WEB: "search_web",

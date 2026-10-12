@@ -2570,7 +2570,7 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
         name="researcher",
         description="Does research",
         capabilities=types.SubagentCapabilities(
-            enabled_tools=[types.BuiltinTools.START_SUBAGENT],
+            enabled_tools=[types.BuiltinTools.INVOKE_SUBAGENT],
             allowed_subagents=["fact_checker"],
         ),
     )
@@ -3077,7 +3077,7 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
           testcase_name="via_disabled_tools",
           capabilities_config=types.CapabilitiesConfig(
               enable_subagents=True,
-              disabled_tools=[types.BuiltinTools.START_SUBAGENT],
+              disabled_tools=[types.BuiltinTools.INVOKE_SUBAGENT],
           ),
       ),
       dict(
@@ -4565,7 +4565,7 @@ class LocalConnectionSubagentHookTest(unittest.IsolatedAsyncioTestCase):
   """Tests for subagent hook dispatch via tool hooks.
 
   Subagent invocations are treated as tool calls with the name
-  START_SUBAGENT. Pre- and post-tool-call hooks receive the subagent
+  INVOKE_SUBAGENT. Pre- and post-tool-call hooks receive the subagent
   data using standard tool hook dispatch.
   """
 
@@ -5719,7 +5719,7 @@ class LocalAgentConfigTest(absltest.TestCase):
         name="researcher",
         description="researcher",
         capabilities=types.SubagentCapabilities(
-            enabled_tools=[types.BuiltinTools.START_SUBAGENT],
+            enabled_tools=[types.BuiltinTools.INVOKE_SUBAGENT],
             allowed_subagents=["ghost_agent"],
         ),
     )
@@ -6370,14 +6370,14 @@ class LocalConnectionSubagentsTest(unittest.IsolatedAsyncioTestCase):
     ):
       strategy._build_harness_config()
 
-  def test_subagent_with_start_subagent_enables_nested_delegation(self):
-    """Verifies subagents with START_SUBAGENT get subagents.enabled=True."""
+  def test_subagent_with_invoke_subagent_enables_nested_delegation(self):
+    """Verifies subagents with INVOKE_SUBAGENT get subagents.enabled=True."""
     subagent = types.SubagentConfig(
         name="nested_helper",
         description="A subagent that can spawn subagents",
         system_instructions="Spawn subagents.",
         capabilities=types.SubagentCapabilities(
-            enabled_tools=[types.BuiltinTools.START_SUBAGENT],
+            enabled_tools=[types.BuiltinTools.INVOKE_SUBAGENT],
         ),
     )
 

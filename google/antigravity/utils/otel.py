@@ -296,7 +296,7 @@ class OTelPreToolCallHook(hooks.PreToolCallDecideHook):
     assert isinstance(context, hooks.OperationContext)
 
     # Queue subagent name if invoking a subagent
-    if data.name == types.BuiltinTools.START_SUBAGENT.value:
+    if data.name == types.BuiltinTools.INVOKE_SUBAGENT.value:
       subagent_name = (
           data.args.get("TypeName") or data.args.get("Role") or "subagent"
       )
@@ -362,7 +362,7 @@ class OTelPostToolCallHook(hooks.PostToolCallHook):
       self, context: hooks.HookContext, data: types.ToolResult
   ) -> None:
     assert isinstance(context, hooks.OperationContext)
-    if data.name == types.BuiltinTools.START_SUBAGENT.value:
+    if data.name == types.BuiltinTools.INVOKE_SUBAGENT.value:
       subagent_trajectory_id = context.get_state("trajectory_id")
       if subagent_trajectory_id:
         subagent_span_key = _get_subagent_span_key(subagent_trajectory_id)

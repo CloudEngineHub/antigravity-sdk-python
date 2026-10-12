@@ -286,12 +286,12 @@ def _translate_allowed_subagents(
 
   if cfg is not None:
     subagent_enabled = getattr(cfg, "enable_subagents", True) and (
-        types.BuiltinTools.START_SUBAGENT in active_tools
+        types.BuiltinTools.INVOKE_SUBAGENT in active_tools
     )
     max_depth = getattr(cfg, "max_subagent_depth", None)
     allowed_names = list(cfg.allowed_subagents or [])
   elif not is_subagent:
-    subagent_enabled = types.BuiltinTools.START_SUBAGENT in active_tools
+    subagent_enabled = types.BuiltinTools.INVOKE_SUBAGENT in active_tools
 
   if not subagent_enabled:
     allowed_dict: dict[str, Any] = {"disabled": {}}
