@@ -66,7 +66,7 @@ async def log_pre_tool(data: types.ToolCall) -> types.HookResult:
   """Logs all tool calls for visibility."""
   global _subagent_active
 
-  if data.name == types.BuiltinTools.START_SUBAGENT.value:
+  if data.name == types.BuiltinTools.INVOKE_SUBAGENT.value:
     _subagent_active = True
     print("\n  --- 🤖 [Hook] Spawning Subagent ---")
     print(f"  Arguments: {data.args}\n")
@@ -81,7 +81,7 @@ async def log_post_tool(data: Any) -> None:
   """Logs tool results."""
   global _subagent_active
 
-  if data.name == types.BuiltinTools.START_SUBAGENT.value:
+  if data.name == types.BuiltinTools.INVOKE_SUBAGENT.value:
     _subagent_active = False
     print("\n  --- 🤖 [Hook] Subagent Finished ---")
     print(f"  Result: {data.result}\n")
@@ -218,7 +218,7 @@ async def run_nested_subagent_hierarchy() -> None:
               types.BuiltinTools.VIEW_FILE,
               types.BuiltinTools.FIND_FILE,
               types.BuiltinTools.LIST_DIR,
-              types.BuiltinTools.START_SUBAGENT,
+              types.BuiltinTools.INVOKE_SUBAGENT,
           ],
           allowed_subagents=["fact_checker"],
       ),

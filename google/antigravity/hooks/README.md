@@ -150,7 +150,7 @@ Hook behavior depends on the connection type.
     tool implementation (e.g., catching exceptions and returning fallback
     outputs or raising descriptive exceptions).
 
--   **Subagent hooks**: Subagent invocations appear as `START_SUBAGENT` tool
+-   **Subagent hooks**: Subagent invocations appear as `INVOKE_SUBAGENT` tool
     calls. `PreToolCallDecideHook` fires before the subagent starts, and
     `PostToolCallHook` fires when the subagent trajectory goes idle, with the
     subagent's final response as the result. Additionally, hooks fire for

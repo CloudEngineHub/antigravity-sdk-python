@@ -81,7 +81,7 @@ lead_researcher = types.SubagentConfig(
     capabilities=types.SubagentCapabilities(
         enabled_tools=[
             types.BuiltinTools.VIEW_FILE,
-            types.BuiltinTools.START_SUBAGENT,
+            types.BuiltinTools.INVOKE_SUBAGENT,
         ],
         allowed_subagents=["fact_checker"],
     ),

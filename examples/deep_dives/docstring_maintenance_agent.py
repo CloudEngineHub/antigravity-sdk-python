@@ -135,7 +135,7 @@ async def main():
           types.BuiltinTools.CREATE_FILE,
           types.BuiltinTools.RUN_COMMAND,
           types.BuiltinTools.ASK_QUESTION,
-          types.BuiltinTools.START_SUBAGENT,
+          types.BuiltinTools.INVOKE_SUBAGENT,
           types.BuiltinTools.GENERATE_IMAGE,
           types.BuiltinTools.FINISH,
       ]

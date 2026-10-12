@@ -31,7 +31,7 @@ Supported hooks (wired in this example):
 
 Subagent hooks:
   Subagent invocations are treated as tool calls with the name
-  START_SUBAGENT. This example includes tool hooks that filter on
+  INVOKE_SUBAGENT. This example includes tool hooks that filter on
   the subagent tool name to demonstrate per-subagent lifecycle
   observability.
 
@@ -118,8 +118,8 @@ async def log_tool_error(data: types.ToolExecutionError):
 
 @hooks.pre_tool_call_decide
 async def log_pre_subagent_call(data: types.ToolCall) -> types.HookResult:
-  """Logs subagent invocations by filtering on START_SUBAGENT. Always allows."""
-  if data.name == types.BuiltinTools.START_SUBAGENT.value:
+  """Logs subagent invocations by filtering on INVOKE_SUBAGENT."""
+  if data.name == types.BuiltinTools.INVOKE_SUBAGENT.value:
     print(
         f"[Hook] Pre-subagent-call — step_id: {data.step_id} tool_call:"
         f" {data}"
@@ -129,8 +129,8 @@ async def log_pre_subagent_call(data: types.ToolCall) -> types.HookResult:
 
 @hooks.post_tool_call
 async def log_post_subagent_call(data: types.ToolResult):
-  """Logs when a subagent trajectory completes by filtering on START_SUBAGENT."""
-  if data.name == types.BuiltinTools.START_SUBAGENT.value:
+  """Logs when a subagent trajectory completes by filtering on INVOKE_SUBAGENT."""
+  if data.name == types.BuiltinTools.INVOKE_SUBAGENT.value:
     print(f"[Hook] Post-subagent-call — step_id: {data.step_id} result: {data}")
 
 
