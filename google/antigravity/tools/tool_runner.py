@@ -87,16 +87,7 @@ def _is_tool_context_ast_node(node: ast.AST) -> bool:
   if isinstance(node, ast.Name):
     return node.id == "ToolContext"
   if isinstance(node, ast.Attribute):
-    return node.attr == "ToolContext" and (
-        (
-            isinstance(node.value, ast.Name)
-            and node.value.id in ("tool_context", "tool_context_module")
-        )
-        or (
-            isinstance(node.value, ast.Attribute)
-            and node.value.attr == "tool_context"
-        )
-    )
+    return node.attr == "ToolContext"
   if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
     return _is_tool_context_ast_node(node.left) or _is_tool_context_ast_node(
         node.right

@@ -974,6 +974,15 @@ class ContextInjectionTest(absltest.TestCase):
             "tool_context_module.ToolContext"
         )
     )
+    self.assertTrue(tool_runner._is_tool_context_annotation("agy.ToolContext"))
+    self.assertTrue(
+        tool_runner._is_tool_context_annotation("antigravity.ToolContext")
+    )
+    self.assertTrue(
+        tool_runner._is_tool_context_annotation(
+            "google.antigravity.ToolContext"
+        )
+    )
     # Union types
     self.assertTrue(
         tool_runner._is_tool_context_annotation(
@@ -999,6 +1008,9 @@ class ContextInjectionTest(absltest.TestCase):
         tool_runner._is_tool_context_annotation(
             "Optional[tool_context.ToolContext]"
         )
+    )
+    self.assertTrue(
+        tool_runner._is_tool_context_annotation("Optional[agy.ToolContext]")
     )
     self.assertTrue(
         tool_runner._is_tool_context_annotation(
