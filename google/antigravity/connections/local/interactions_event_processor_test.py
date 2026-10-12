@@ -24,6 +24,7 @@ from absl.testing import absltest
 from google.antigravity import types
 from google.antigravity.connections.local import event_processor
 from google.antigravity.connections.local import interactions_event_processor
+from google.antigravity.connections.local import local_connection_config
 from google.antigravity.hooks import hook_runner
 from google.antigravity.hooks import hooks
 from google.antigravity.tools import tool_runner
@@ -717,6 +718,63 @@ class InteractionsEventProcessorTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(sub_done.trajectory_id, "sub-conv-1")
     self.assertEqual(sub_done.status, types.StepStatus.DONE)
     self.assertTrue(proc.step_queue.empty())
+
+  async def test_invoke_subagent_step_maps_to_start_subagent(self):
+    proc = interactions_event_processor.InteractionsEventProcessor(
+        send_json_event_fn=self._send_json_event,
+        root_interaction_id="conv-1",
+    )
+    invoke_subagent_wire_name = (
+        local_connection_config.BUILTIN_TOOL_PROTO_FIELDS[
+            types.BuiltinTools.START_SUBAGENT
+        ]
+    )
+
+    await proc.process_event({
+        "event_type": "step.start",
+        "index": 1,
+        "step": {
+            "type": "function_call",
+            "id": "call-sub-1",
+            "name": invoke_subagent_wire_name,
+            "description": "Invoking subagent",
+            "arguments": {"TypeName": "self", "Prompt": "do work"},
+        },
+    })
+    await proc.process_event({"event_type": "step.stop", "index": 1})
+
+    step_call = proc.step_queue.get_nowait()
+    self.assertEqual(step_call.type, types.StepType.TOOL_CALL)
+    self.assertEqual(step_call.status, types.StepStatus.ACTIVE)
+    self.assertEqual(len(step_call.tool_calls), 1)
+    self.assertEqual(
+        step_call.tool_calls[0].name, types.BuiltinTools.START_SUBAGENT.value
+    )
+    self.assertEqual(
+        step_call.tool_calls[0].args,
+        {"TypeName": "self", "Prompt": "do work"},
+    )
+
+    await proc.process_event({
+        "event_type": "step.start",
+        "index": 2,
+        "step": {
+            "type": "function_result",
+            "call_id": "call-sub-1",
+            "name": invoke_subagent_wire_name,
+            "is_error": False,
+            "result": "sub-conv-1",
+        },
+    })
+    await proc.process_event({"event_type": "step.stop", "index": 2})
+
+    step_res = proc.step_queue.get_nowait()
+    self.assertEqual(step_res.type, types.StepType.TOOL_CALL)
+    self.assertEqual(step_res.status, types.StepStatus.DONE)
+    self.assertEqual(len(step_res.tool_calls), 1)
+    self.assertEqual(
+        step_res.tool_calls[0].name, types.BuiltinTools.START_SUBAGENT.value
+    )
 
 
 class UserInputStepDictToContentTest(absltest.TestCase):

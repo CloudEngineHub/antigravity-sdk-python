@@ -23,6 +23,7 @@ from google.antigravity import types
 from google.antigravity.connections.local import event_processor
 from google.antigravity.connections.local.local_connection_config import make_step_id
 from google.antigravity.connections.local.local_connection_config import normalize_wire_path
+from google.antigravity.connections.local.local_connection_config import PROTO_FIELD_TO_SDK_NAME
 from google.antigravity.connections.local.local_connection_config import WIRE_PATH_ARGUMENT_KEYS
 
 _CALL_TO_RESULT_KIND: dict[str, str] = {
@@ -221,7 +222,10 @@ def _resolve_default_tool_name(
 ) -> str:
   """Resolves the SDK tool name from a GAOS tool call or result step dict."""
   if step_dict.get("name"):
-    return str(step_dict["name"])
+    raw_name = str(step_dict["name"])
+    if kind != "mcp_server_tool":
+      return PROTO_FIELD_TO_SDK_NAME.get(raw_name, raw_name)
+    return raw_name
   return str(_RESULT_KIND_DEFAULT_TOOL_NAME.get(kind, subtype))
 
 
