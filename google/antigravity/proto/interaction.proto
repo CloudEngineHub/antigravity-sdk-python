@@ -60,13 +60,6 @@ message Interaction {
       .genai.Interaction.Usage.GroundingToolCount.Type type = 1;
       int32 count = 2;
     }
-    message BillableUsage {
-      int32 total_input_tokens = 1;
-      int32 total_cached_tokens = 2;
-      int32 total_output_tokens = 3;
-      int32 total_thought_tokens = 4;
-      int32 total_tokens = 5;
-    }
     int32 total_input_tokens = 7;
     repeated .genai.Interaction.Usage.ModalityTokens input_tokens_by_modality =
         8;
@@ -83,7 +76,6 @@ message Interaction {
     int32 total_tokens = 6;
     repeated .genai.Interaction.Usage.GroundingToolCount grounding_tool_count =
         17;
-    .genai.Interaction.Usage.BillableUsage billable_usage = 21;
   }
   enum Status {
     UNSPECIFIED = 0;
