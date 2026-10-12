@@ -2918,6 +2918,64 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
         config.models[0].vertex_endpoint.options.service_tier, "priority"
     )
 
+  def test_models_max_output_tokens_set(self):
+    """Verifies that max_output_tokens on ModelTarget maps to the proto field."""
+    strategy = self._make_strategy(
+        models=[
+            types.ModelTarget(
+                name=models_lib.DEFAULT_MODEL,
+                types=[types.ModelType.TEXT],
+                endpoint=types.GeminiAPIEndpoint(
+                    options=types.GeminiModelOptions(
+                        max_output_tokens=262144,
+                    ),
+                ),
+            )
+        ]
+    )
+    config = strategy._build_harness_config()
+    self.assertEqual(
+        config.models[0].gemini_api_endpoint.options.max_output_tokens, 262144
+    )
+
+  def test_models_max_output_tokens_none_omitted(self):
+    """Verifies that max_output_tokens=None leaves the proto field at its default."""
+    strategy = self._make_strategy(
+        models=[
+            types.ModelTarget(
+                name=models_lib.DEFAULT_MODEL,
+                types=[types.ModelType.TEXT],
+                endpoint=types.GeminiAPIEndpoint(
+                    options=types.GeminiModelOptions(max_output_tokens=None),
+                ),
+            )
+        ]
+    )
+    config = strategy._build_harness_config()
+    self.assertFalse(config.models[0].gemini_api_endpoint.HasField("options"))
+
+  def test_vertex_endpoint_max_output_tokens_set(self):
+    """Verifies that max_output_tokens on VertexEndpoint maps to the proto field."""
+    strategy = self._make_strategy(
+        models=[
+            types.ModelTarget(
+                name=models_lib.DEFAULT_MODEL,
+                types=[types.ModelType.TEXT],
+                endpoint=types.VertexEndpoint(
+                    project="test-project",
+                    location="us-central1",
+                    options=types.GeminiModelOptions(
+                        max_output_tokens=262144,
+                    ),
+                ),
+            )
+        ]
+    )
+    config = strategy._build_harness_config()
+    self.assertEqual(
+        config.models[0].vertex_endpoint.options.max_output_tokens, 262144
+    )
+
   def test_vertex_config_propagates(self):
     """Verifies that Vertex configuration fields propagate to proto."""
     models = [

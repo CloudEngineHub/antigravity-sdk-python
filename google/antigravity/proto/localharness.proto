@@ -147,6 +147,7 @@ message FilesystemWorkspace {
 message GeminiModelOptions {
   string thinking_level = 1;
   string service_tier = 2;
+  int32 max_output_tokens = 3;
 }
 message GeminiAPIEndpoint {
   string base_url = 1;

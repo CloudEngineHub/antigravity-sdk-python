@@ -104,6 +104,9 @@ class GeminiModelOptions(pydantic.BaseModel):
 
   thinking_level: ThinkingLevel | None = None
   service_tier: ServiceTier | None = None
+  max_output_tokens: int | None = pydantic.Field(
+      default=None, gt=0, le=2**31 - 1
+  )
 
 
 class GeminiAPIEndpoint(ModelEndpoint):

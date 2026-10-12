@@ -137,6 +137,8 @@ def build_gemini_options_proto(
         proto.service_tier = str(options.service_tier.value)
       else:
         proto.service_tier = str(options.service_tier)
+    if options.max_output_tokens is not None:
+      proto.max_output_tokens = options.max_output_tokens
   return proto
 
 

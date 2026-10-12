@@ -519,6 +519,17 @@ class ModelTargetTest(unittest.TestCase):
     self.assertEqual(
         mc.endpoint.options.thinking_level, types.ThinkingLevel.HIGH
     )
+    self.assertIsNone(mc.endpoint.options.max_output_tokens)
+
+  def test_gemini_model_options_max_output_tokens(self):
+    options = types.GeminiModelOptions(max_output_tokens=262144)
+    self.assertEqual(options.max_output_tokens, 262144)
+    with self.assertRaises(pydantic.ValidationError):
+      types.GeminiModelOptions(max_output_tokens=0)
+    with self.assertRaises(pydantic.ValidationError):
+      types.GeminiModelOptions(max_output_tokens=-1)
+    with self.assertRaises(pydantic.ValidationError):
+      types.GeminiModelOptions(max_output_tokens=2**31)
 
   def test_vertex_endpoint_construction(self):
     endpoint = types.VertexEndpoint(project="my-proj", location="us-east1")
