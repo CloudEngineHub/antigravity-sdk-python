@@ -7,6 +7,89 @@ All notable changes to the Google Antigravity Python SDK will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.22] - 2026-10-12
+
+Google Antigravity Python SDK v0.1.22 introduces beta support for dynamic workflow orchestration, in-memory skill definitions, and configurable per-step output token limits for extended model decodes. This release also standardizes subagent invocation naming on `BuiltinTools.INVOKE_SUBAGENT` and provides fine-grained controls over MCP tool payload limits and eager tool registration.
+
+### 🌟 Key Highlights
+- **Dynamic Workflow Orchestration (`beta.workflows`)**: Author and execute multi-step agent workflows with typed workflow primitives (`phase`, `log`, `agent`, `parallel`, `pipeline`), the `@beta.workflows.define` decorator, and `agent.beta.run_workflow()`.
+  ```python
+  from google.antigravity import beta
+
+  @beta.workflows.define
+  async def flow():
+      return await beta.workflows.agent("Process request", role="Worker")
+
+  result = await agent.beta.run_workflow(flow)
+  ```
+
+- **In-Memory Skills (`InlineSkill`)**: Define and register in-memory skills directly on agent configurations using `InlineSkill`, eliminating the requirement for disk-based skill files.
+  ```python
+  from google.antigravity import InlineSkill, LocalAgentConfig
+
+  config = LocalAgentConfig(
+      inline_skills=[InlineSkill(name="custom_math", code="def add(a, b): return a + b")]
+  )
+  ```
+
+- **Configurable Output Token Limits (`GeminiModelOptions`)**: Configure per-step output generation limits via `max_output_tokens` in `GeminiModelOptions` to support long decodes exceeding 64k tokens.
+  ```python
+  from google.antigravity import GeminiModelOptions, LocalAgentConfig
+
+  config = LocalAgentConfig(
+      model_options=GeminiModelOptions(max_output_tokens=100_000)
+  )
+  ```
+
+- **Canonical Subagent Tool Naming (`BuiltinTools.INVOKE_SUBAGENT`)**: Standardize subagent invocation around `BuiltinTools.INVOKE_SUBAGENT`, deprecating `BuiltinTools.START_SUBAGENT` while retaining automatic coercion and dictionary lookup compatibility.
+  ```python
+  from google.antigravity import BuiltinTools, LocalAgentConfig
+
+  config = LocalAgentConfig(
+      enabled_tools=[BuiltinTools.INVOKE_SUBAGENT]
+  )
+  ```
+
+- **Configurable MCP Output Byte Limits (`CapabilitiesConfig`)**: Configure byte thresholds for Model Context Protocol (MCP) tool responses via `mcp_max_output_bytes` on `CapabilitiesConfig` to handle large payloads without truncation.
+  ```python
+  from google.antigravity import CapabilitiesConfig, LocalAgentConfig
+
+  config = LocalAgentConfig(
+      capabilities=CapabilitiesConfig(mcp_max_output_bytes=10_485_760)
+  )
+  ```
+
+- **Eager MCP Tool Loading (`force_all_tools_eager`)**: Opt out of lazy tool-search loading to force all tools from an MCP server into the model's eager tool list.
+  ```python
+  from google.antigravity import LocalAgentConfig, McpServerConfig
+
+  server = McpServerConfig(name="db", command="serve", force_all_tools_eager=True)
+  config = LocalAgentConfig(mcp_servers=[server])
+  ```
+
+---
+
+### 📋 Detailed Changes
+
+#### Features & Enhancements
+- **Dynamic Workflows**: Added the `google.antigravity.beta.workflows` module with orchestration primitives (`phase`, `log`, `agent`, `parallel`, `pipeline`), `@beta.workflows.define` decorator, AST script extraction, and the `agent.beta.run_workflow` entry point.
+- **In-Memory Skills**: Exposed `InlineSkill` at the root package level and added the `inline_skills` parameter across `AgentConfig`, `LocalAgentConfig`, `LiteRTAgentConfig`, and `LocalOpenAIAgentConfig`. Passing both `skills_paths` and `inline_skills` simultaneously is validated and rejected.
+- **Subagent Model Configuration**: Added support for assigning dedicated model configurations to individual subagents via `SubagentConfig.model`.
+- **SandboxStatus Type Export**: Added `SandboxStatus` to `google.antigravity.types.__all__` to support direct imports from `types`.
+- **UsageMetadata Reflected Subtraction**: Implemented `__rsub__` on `UsageMetadata` to allow reflected subtraction (such as `0 - usage` to negate counts) and subtraction between metadata instances.
+- **Tool Lifecycle Call IDs**: Propagated `call_id` across tool hooks (`pre_tool`, `post_tool`, `on_tool_error`) and tool call steps to enable unambiguous correlation between hooks and tool executions.
+
+#### Model & Default Changes
+- **Workflow Tool Default**: `BuiltinTools.RUN_WORKFLOW` is now enabled by default alongside subagent tools so agents can run dynamic workflows out of the box. To disable it, pass `disabled_tools=[BuiltinTools.RUN_WORKFLOW]` in `LocalAgentConfig`.
+- **Gemini Max Output Tokens**: Added `max_output_tokens` to `GeminiModelOptions`. Defaults to 65,536 tokens to maintain standard token budgets. To support decodes beyond 64k tokens, specify `GeminiModelOptions(max_output_tokens=<int>)` on `model_options`.
+- **Subagent Invocation Tool Name**: Replaced `BuiltinTools.START_SUBAGENT` with `BuiltinTools.INVOKE_SUBAGENT` as the primary enum member. Supplying `"start_subagent"` emits a `DeprecationWarning` and coerces to `INVOKE_SUBAGENT`.
+- **MCP Lazy Loading Opt-Out**: Added `force_all_tools_eager` to MCP server configs. Defaults to `False` to conserve context tokens through lazy tool search. Set `force_all_tools_eager=True` on an MCP server config to eagerly expose all its tools to the model.
+- **MCP Output Byte Limit**: Added `mcp_max_output_bytes` to `CapabilitiesConfig`. Defaults to `None` (preserving runtime defaults). Override by providing an integer in `(0, 2147483647]` via `CapabilitiesConfig(mcp_max_output_bytes=<int>)`.
+
+#### Bug Fixes
+- **Skill Lookup Steps**: Server-side skill lookups were misclassified as `StepType.TEXT_RESPONSE` with empty tool calls, and failures returned `DONE`; resolved by emitting `ToolCall` steps with `StepType.TOOL_CALL` and marking failures with `StepStatus.ERROR`.
+- **ToolContext Type Detection**: Import aliases ending in `.ToolContext` (such as `agy.ToolContext`) failed AST parameter inspection; resolved by matching any attribute expression ending in `.ToolContext`.
+
 ## [0.1.21] - 2026-10-05
 
 This release introduces experimental API isolation via the `@beta` decorator and `.beta` namespaces, granular skills configuration for subagents, and bulk hook registration during agent initialization. It also expands typing support for tool context annotations, refines `UsageMetadata` arithmetic operations, and resolves a critical issue where tool calls with empty string IDs were unintentionally deduplicated.
