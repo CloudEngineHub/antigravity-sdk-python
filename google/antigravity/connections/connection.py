@@ -27,8 +27,12 @@ from __future__ import annotations
 import abc
 import json
 import logging
+import os
+import pathlib
 import re
 from typing import Any, AsyncIterator, Callable, Mapping, Sequence, cast
+import urllib.parse
+import urllib.request
 import warnings
 
 import pydantic
@@ -38,6 +42,71 @@ from google.antigravity import types
 from google.antigravity.hooks import hooks as hooks_mod
 from google.antigravity.hooks import policy
 from google.antigravity.triggers import triggers as triggers_mod
+
+
+def normalize_wire_path(path: str) -> str:
+  """Translates wire-format URIs to clean absolute filesystem paths.
+
+  Paths arrive as file:/// or cns:// URIs over the wire protocol.
+  This converts them to platform-native absolute paths that user code expects.
+
+  Args:
+    path: Raw path or URI string.
+
+  Returns:
+    Normalized filesystem path string.
+  """
+  parsed = urllib.parse.urlparse(path)
+  if parsed.scheme == "file":
+    # urlparse("file:///abs/path").path == "/abs/path"
+    # url2pathname converts URL path to platform-native path
+    return urllib.request.url2pathname(parsed.path)
+  if parsed.scheme == "cns":
+    # urlparse("cns://el-d/home/user/...").netloc == "el-d"
+    # urlparse("cns://el-d/home/user/...").path == "/home/user/..."
+    # Convert to the canonical /cns/<cell>/... absolute path format.
+    return "/cns/" + parsed.netloc + parsed.path
+  return path
+
+
+def normalize_workspace_path(path: str | os.PathLike[str]) -> str:
+  """Normalizes wire URIs, expands user home ~, and resolves relative paths."""
+  path_str = os.fspath(path)
+  if not path_str:
+    return ""
+  normalized = normalize_wire_path(path_str)
+  if normalized.startswith("/cns/"):
+    return normalized
+  parsed = urllib.parse.urlparse(normalized)
+  if not parsed.scheme or parsed.scheme == "file":
+    return str(pathlib.Path(normalized).expanduser().resolve())
+  return normalized
+
+
+def normalize_workspace_paths(
+    workspaces: (
+        Sequence[str | os.PathLike[str]] | str | os.PathLike[str] | None
+    ),
+    *,
+    default_to_cwd: bool = False,
+) -> list[str]:
+  """Coerces single/sequence workspace paths and normalizes each entry."""
+  if workspaces is None:
+    return [os.getcwd()] if default_to_cwd else []
+  if isinstance(workspaces, (str, os.PathLike)):
+    return [normalize_workspace_path(workspaces)]
+  if isinstance(workspaces, (list, tuple, Sequence)) and not isinstance(
+      workspaces, (str, bytes)
+  ):
+    return [normalize_workspace_path(ws) for ws in workspaces]
+  raise ValueError(
+      f"workspaces must be a sequence of paths, got {type(workspaces).__name__}"
+  )
+
+
+def make_step_id(trajectory_id: str, step_index: int) -> str:
+  """Creates a unique step identifier from trajectory ID and step index."""
+  return f"{trajectory_id}:{step_index}" if trajectory_id else str(step_index)
 
 
 def resolve_active_tools(
