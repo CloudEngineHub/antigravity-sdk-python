@@ -1274,8 +1274,11 @@ class AgentConfigTest(unittest.IsolatedAsyncioTestCase):
     async with agent.Agent(config) as ag:
       with self.assertRaisesRegex(
           types.ToolExecutionError, "workflow execution failed"
-      ):
+      ) as cm:
         await ag.beta.run_workflow(failing_wf)
+      self.assertEqual(
+          cm.exception.tool_name, types.BuiltinTools.RUN_WORKFLOW.value
+      )
 
   @mock.patch.object(lc_module, "LocalConnectionStrategy", autospec=True)
   @mock.patch.object(conversation.Conversation, "create", autospec=True)
@@ -1385,8 +1388,11 @@ class AgentConfigTest(unittest.IsolatedAsyncioTestCase):
       with self.assertRaisesRegex(
           types.ToolExecutionError,
           "The model did not invoke the run_workflow tool",
-      ):
+      ) as cm:
         await ag.beta.run_workflow(sample_wf)
+      self.assertEqual(
+          cm.exception.tool_name, types.BuiltinTools.RUN_WORKFLOW.value
+      )
 
 
 if __name__ == "__main__":

@@ -362,14 +362,14 @@ class Agent:
 
       if workflow_step is None:
         raise types.ToolExecutionError(
+            "The model did not invoke the run_workflow tool.",
             tool_name=types.BuiltinTools.RUN_WORKFLOW.value,
-            message="The model did not invoke the run_workflow tool.",
         )
 
       if workflow_step.status == types.StepStatus.ERROR:
         raise types.ToolExecutionError(
+            workflow_step.error or "Workflow execution failed.",
             tool_name=types.BuiltinTools.RUN_WORKFLOW.value,
-            message=workflow_step.error or "Workflow execution failed.",
         )
 
       prog = (
