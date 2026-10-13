@@ -381,6 +381,32 @@ class ToolRunnerTest(absltest.TestCase):
     coerced = runner._coerce_args(wrapped, {"val": "21"})
     self.assertEqual(coerced, {"val": 21})
 
+  def test_coerce_args_empty_kwargs(self):
+    """Verifies that _coerce_args short-circuits immediately when kwargs is empty."""
+
+    def _tool(a: int) -> int:
+      return a
+
+    runner = tool_runner.ToolRunner([_tool])
+    with mock.patch.object(
+        tool_runner, "_get_callable_signature_and_hints"
+    ) as mock_get_info:
+      coerced = runner._coerce_args(_tool, {})
+      self.assertEqual(coerced, {})
+      mock_get_info.assert_not_called()
+
+  def test_coerce_args_reuses_cached_signature_and_hints(self):
+    """Verifies that _coerce_args reuses cached callable introspection."""
+
+    def _tool(a: int) -> int:
+      return a
+
+    runner = tool_runner.ToolRunner([_tool])
+    coerced1 = runner._coerce_args(_tool, {"a": "123"})
+    coerced2 = runner._coerce_args(_tool, {"a": "456"})
+    self.assertEqual(coerced1, {"a": 123})
+    self.assertEqual(coerced2, {"a": 456})
+
   def test_execute_coerces_arguments(self):
     """Verifies that execute() automatically coerces argument types."""
 
