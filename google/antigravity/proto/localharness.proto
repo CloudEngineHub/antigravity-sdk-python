@@ -200,6 +200,7 @@ message CustomSystemInstructions {
       .antigravity.localharness.SystemInstructionTemplate template = 2;
       string builtin_section = 3;
     }
+    string title = 4;
   }
   repeated .antigravity.localharness.CustomSystemInstructions.Part part = 1;
 }
