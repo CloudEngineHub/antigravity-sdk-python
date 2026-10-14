@@ -889,14 +889,13 @@ def to_system_instructions_proto(
 
   proto = localharness_pb2.SystemInstructions()
   if isinstance(instructions, types.CustomSystemInstructions):
+    part = localharness_pb2.CustomSystemInstructions.Part(
+        text=instructions.text
+    )
+    if instructions.title:
+      part.title = instructions.title
     proto.custom.CopyFrom(
-        localharness_pb2.CustomSystemInstructions(
-            part=[
-                localharness_pb2.CustomSystemInstructions.Part(
-                    text=instructions.text
-                )
-            ]
-        )
+        localharness_pb2.CustomSystemInstructions(part=[part])
     )
   elif isinstance(instructions, types.TemplatedSystemInstructions):
     appended = localharness_pb2.AppendedSystemInstructions()

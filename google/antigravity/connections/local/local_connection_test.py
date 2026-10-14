@@ -2156,12 +2156,16 @@ class LocalConnectionStrategyConfigTest(parameterized.TestCase):
     """Verifies that CustomSystemInstructions sets custom on the proto."""
     strategy = self._make_strategy(
         system_instructions=types.CustomSystemInstructions(
-            text="Override everything."
+            text="Override everything.",
+            title="my_title",
         )
     )
     config = strategy._build_harness_config()
     self.assertEqual(
         config.system_instructions.custom.part[0].text, "Override everything."
+    )
+    self.assertEqual(
+        config.system_instructions.custom.part[0].title, "my_title"
     )
 
   def test_system_instructions_model_templated(self):

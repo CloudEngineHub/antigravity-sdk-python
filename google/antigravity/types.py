@@ -161,6 +161,9 @@ class CustomSystemInstructions(pydantic.BaseModel):
   """
 
   text: str
+  # Optional prompt-section title; renders the text under <title> tags
+  # instead of the generic <System>.
+  title: str | None = None
 
 
 class TemplatedSystemInstructions(pydantic.BaseModel):

@@ -557,6 +557,10 @@ class SystemInstructionsTest(unittest.TestCase):
     """Verifies construction of CustomSystemInstructions."""
     si = types.CustomSystemInstructions(text="Override all defaults.")
     self.assertEqual(si.text, "Override all defaults.")
+    self.assertIsNone(si.title)
+
+    si2 = types.CustomSystemInstructions(text="With title", title="my_title")
+    self.assertEqual(si2.title, "my_title")
 
   def test_templated_construction(self):
     """Verifies construction of TemplatedSystemInstructions."""
