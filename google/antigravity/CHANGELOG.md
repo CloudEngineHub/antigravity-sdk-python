@@ -18,9 +18,11 @@ Google Antigravity Python SDK v0.1.22 introduces beta support for dynamic workfl
 
   @beta.workflows.define
   async def flow():
-      return await beta.workflows.agent("Process request", role="Worker")
-
-  result = await agent.beta.run_workflow(flow)
+      beta.workflows.phase("Process")
+      out = await beta.workflows.agent(
+          "Process request", schema={"type": "string"}, role="Worker"
+      )
+      beta.workflows.log(out)
   ```
 
 - **In-Memory Skills (`InlineSkill`)**: Define and register in-memory skills directly on agent configurations using `InlineSkill`, eliminating the requirement for disk-based skill files.
@@ -28,25 +30,43 @@ Google Antigravity Python SDK v0.1.22 introduces beta support for dynamic workfl
   from google.antigravity import InlineSkill, LocalAgentConfig
 
   config = LocalAgentConfig(
-      inline_skills=[InlineSkill(name="custom_math", code="def add(a, b): return a + b")]
+      inline_skills=[
+          InlineSkill(
+              name="custom-math",
+              description="Guidance for custom math operations.",
+              content="# Custom Math\nUse `add(a, b)` for addition.",
+          )
+      ]
   )
   ```
 
 - **Configurable Output Token Limits (`GeminiModelOptions`)**: Configure per-step output generation limits via `max_output_tokens` in `GeminiModelOptions` to support long decodes exceeding 64k tokens.
   ```python
-  from google.antigravity import GeminiModelOptions, LocalAgentConfig
+  from google.antigravity import (
+      GeminiAPIEndpoint,
+      GeminiModelOptions,
+      LocalAgentConfig,
+      ModelTarget,
+  )
 
   config = LocalAgentConfig(
-      model_options=GeminiModelOptions(max_output_tokens=100_000)
+      model=ModelTarget(
+          name="gemini-3.8-flash",
+          endpoint=GeminiAPIEndpoint(
+              options=GeminiModelOptions(max_output_tokens=100_000)
+          ),
+      )
   )
   ```
 
 - **Canonical Subagent Tool Naming (`BuiltinTools.INVOKE_SUBAGENT`)**: Standardize subagent invocation around `BuiltinTools.INVOKE_SUBAGENT`, deprecating `BuiltinTools.START_SUBAGENT` while retaining automatic coercion and dictionary lookup compatibility.
   ```python
-  from google.antigravity import BuiltinTools, LocalAgentConfig
+  from google.antigravity import BuiltinTools, CapabilitiesConfig, LocalAgentConfig
 
   config = LocalAgentConfig(
-      enabled_tools=[BuiltinTools.INVOKE_SUBAGENT]
+      capabilities=CapabilitiesConfig(
+          enabled_tools=[BuiltinTools.INVOKE_SUBAGENT]
+      )
   )
   ```
 
@@ -61,9 +81,11 @@ Google Antigravity Python SDK v0.1.22 introduces beta support for dynamic workfl
 
 - **Eager MCP Tool Loading (`force_all_tools_eager`)**: Opt out of lazy tool-search loading to force all tools from an MCP server into the model's eager tool list.
   ```python
-  from google.antigravity import LocalAgentConfig, McpServerConfig
+  from google.antigravity import LocalAgentConfig, types
 
-  server = McpServerConfig(name="db", command="serve", force_all_tools_eager=True)
+  server = types.McpStdioServer(
+      name="db", command="serve", force_all_tools_eager=True
+  )
   config = LocalAgentConfig(mcp_servers=[server])
   ```
 
