@@ -239,6 +239,13 @@ def _make_public_callable(
       return fn(*args, **kwargs)
 
   setattr(_proxy, "__signature__", public_sig)
+  if (
+      hasattr(_proxy, "__annotations__")
+      and context_param in _proxy.__annotations__
+  ):
+    _proxy.__annotations__ = {
+        k: v for k, v in _proxy.__annotations__.items() if k != context_param
+    }
   return _proxy
 
 

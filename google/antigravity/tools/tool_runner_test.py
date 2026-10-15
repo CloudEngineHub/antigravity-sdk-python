@@ -1162,6 +1162,9 @@ class SchemaGenerationTest(absltest.TestCase):
     sig = inspect.signature(public)
     self.assertIn("query", sig.parameters)
     self.assertNotIn("ctx", sig.parameters)
+    self.assertIn("query", getattr(public, "__annotations__", {}))
+    self.assertNotIn("ctx", getattr(public, "__annotations__", {}))
+    self.assertIsNone(tool_runner._find_context_param(public))
 
   def test_public_callable_for_unknown_tool_raises(self):
     """Verifies that get_public_callable raises for unknown tools.
