@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Awaitable, Callable, Coroutine, Iterable
+from collections.abc import Awaitable, Callable, Coroutine, Generator, Iterable
 import dataclasses
 import inspect
 import sys
@@ -25,6 +25,13 @@ from typing import Any, Literal
 
 from google.antigravity import beta as _beta_lib
 
+# VCS workspace isolation mode for a spawned workflow agent:
+# - "inherit": Run in the parent agent's existing workspace directory.
+# - "branch": Fork an isolated VCS workspace copy (e.g., git worktree) that is
+#   cleaned up when the workflow finishes.
+# - "share": Create a workspace sharing the parent's underlying repository
+#   storage (e.g., git worktree / hg share) that is cleaned up when the
+#   workflow finishes.
 WorkspaceMode = Literal["inherit", "branch", "share"]
 
 _PRIMITIVE_NAMES: frozenset[str] = frozenset({
@@ -33,6 +40,9 @@ _PRIMITIVE_NAMES: frozenset[str] = frozenset({
     "agent",
     "parallel",
     "pipeline",
+    "call_tool",
+    "ToolError",
+    "args",
 })
 
 _WORKFLOW_MODULE_NAMES: frozenset[str] = frozenset({
@@ -43,6 +53,20 @@ _WORKFLOW_MODULE_NAMES: frozenset[str] = frozenset({
 
 class WorkflowError(Exception):  # pylint: disable=g-bad-exception-name
   """Raised when a workflow script fails validation or runtime execution."""
+
+
+class ToolError(WorkflowError):
+  """Raised inside a workflow script when a `call_tool` invocation fails or is denied.
+
+  Attributes:
+    tool: Name of the tool that failed or was denied.
+    message: Error message returned by the harness.
+  """
+
+  def __init__(self, tool: str, message: str) -> None:
+    super().__init__(f"{tool}: {message}")
+    self.tool = tool
+    self.message = message
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +82,10 @@ class WorkflowError(Exception):  # pylint: disable=g-bad-exception-name
 # and raises RuntimeError.
 # ---------------------------------------------------------------------------
 
+# Compile-time stub for the `args` dictionary injected into workflow scripts
+# when `Args` is passed to `run_workflow`.
+args: dict[str, Any] = {}
+
 
 def _outside_runtime_error(name: str) -> RuntimeError:
   return RuntimeError(
@@ -68,9 +96,34 @@ def _outside_runtime_error(name: str) -> RuntimeError:
   )
 
 
-def log(*args: Any) -> None:
+class WorkflowAgent:
+  """Compile-time stub for a single-use or multi-turn workflow agent.
+
+  Inside a `@workflows.define` function:
+  - Single-use: `res = await workflows.agent("Prompt", schema={...})`
+  - Multi-turn:
+    ```python
+    reviewer = workflows.agent("Standing instructions", role="Reviewer")
+    turn1 = await reviewer("First turn", schema={"type": "string"})
+    turn2 = await reviewer("Second turn", schema={"type": "string"})
+    ```
+  """
+
+  def __await__(self) -> Generator[Any, None, Any]:
+    raise _outside_runtime_error("agent")
+
+  def __call__(
+      self,
+      prompt: str,
+      schema: Any = None,
+  ) -> Coroutine[Any, Any, Any]:
+    del prompt, schema
+    raise _outside_runtime_error("agent")
+
+
+def log(*values: Any) -> None:
   """Compile-time stub: emits a progress log line to the current workflow phase."""
-  if not args:
+  if not values:
     raise TypeError("log: requires at least 1 argument")
   raise _outside_runtime_error("log")
 
@@ -82,15 +135,56 @@ def phase(name: str) -> str:
 
 
 def agent(
-    prompt: str,
-    schema: Any,
+    prompt: str | None = None,
+    schema: Any = None,
     role: str | None = None,
     type_name: str = "self",
     workspace: WorkspaceMode = "inherit",
-) -> Coroutine[Any, Any, Any]:
-  """Compile-time stub: returns an awaitable promise that runs a workflow agent."""
+) -> WorkflowAgent:
+  """Compile-time stub: defines a single-use or multi-turn workflow agent.
+
+  Args:
+    prompt: Task prompt (for a single-turn `await workflows.agent(...)` call) or
+      standing instructions (when binding a multi-turn `WorkflowAgent` variable
+      before calling `await handle(...)`).
+    schema: Optional JSON Schema dict constraining the agent's structured output
+      (only used for single-turn `await workflows.agent(...)` calls; for
+      multi-turn agents, pass `schema` on each `await handle(prompt,
+      schema=...)` turn).
+    role: Optional human-readable display label for this specific agent
+      invocation in workflow progress logs (e.g., `"Audit auth.py"` when running
+      multiple parallel calls that share the same `type_name`). Defaults to a
+      truncated prefix of `prompt`.
+    type_name: Name of the agent definition to spawn. Defaults to `"self"`
+      (cloning the parent agent's configuration), or matches the `name` of a
+      `types.SubagentConfig` registered in `LocalAgentConfig(subagents=[...])`.
+      Use `types.SubagentConfig` to configure an explicit `model` name (e.g.,
+      `model="gemini-3.8-flash"`), `system_instructions`, `capabilities`,
+      `tools`, or `skills_config` for the workflow agent.
+    workspace: VCS workspace isolation mode for the spawned agent: `"inherit"`
+      (run in the parent workspace), `"branch"` (fork an isolated workspace copy
+      cleaned up when the workflow finishes), or `"share"` (share the underlying
+      repository directory in a separate working tree).
+
+  Returns:
+    A `WorkflowAgent` handle that can be awaited directly for a single-turn
+    execution or called across multiple turns (`await handle(prompt,
+    schema=...)`).
+
+  Raises:
+    RuntimeError: Always, if called directly in the host Python process rather
+      than inside a `@workflows.define` function.
+  """
   del prompt, schema, role, type_name, workspace
   raise _outside_runtime_error("agent")
+
+
+def call_tool(name: str, **tool_args: Any) -> Coroutine[Any, Any, str]:
+  """Compile-time stub: invokes an agent tool programmatically and returns its output."""
+  del tool_args
+  if not isinstance(name, str) or not name.strip():
+    raise ValueError("call_tool: name must be a non-empty string")
+  raise _outside_runtime_error("call_tool")
 
 
 def parallel(
@@ -185,27 +279,21 @@ def _check_no_top_level_return_or_yield(nodes: list[ast.stmt]) -> None:
 
 
 def validate_workflow_source(source: str) -> None:
-  """Validates Python workflow script source against `run_workflow` AST rules.
+  """Validates Python workflow script source against `run_workflow` syntax rules.
 
   These checks validate the script at `@workflows.define` decoration time so
   disallowed constructs fail fast before execution:
-  - `ast.Import` / `ast.ImportFrom`: workflow scripts run in a self-contained
-    environment with built-in workflow primitives and do not allow imports.
-  - `ast.While`: workflows must use bounded `for` loops rather than unbounded
-    `while` loops.
-  - `ast.Attribute` starting with `_` and `ast.Name` starting with `__`:
-    private and dunder attribute/name access is disallowed in workflow scripts.
   - Top-level `ast.Return` and `ast.Yield` / `ast.YieldFrom`: disallowed at the
     top level of a workflow script (`return` inside nested `def` / `async def`
     stage helpers is permitted).
+  - Top-level `await` compilation (`ast.PyCF_ALLOW_TOP_LEVEL_AWAIT`).
 
   Args:
     source: Python source code of the workflow script.
 
   Raises:
-    WorkflowError: If the source has a syntax error or uses disallowed AST
-      constructs (`import`, `while`, top-level `return`/`yield`, `_`-prefixed
-      attributes, or `__`-prefixed names).
+    WorkflowError: If the source has a syntax error or uses top-level
+      `return`/`yield`.
   """
   try:
     tree = ast.parse(source, "<workflow>")
@@ -218,25 +306,6 @@ def validate_workflow_source(source: str) -> None:
     compile(tree, "<workflow>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
   except SyntaxError as e:
     raise WorkflowError(f"workflow syntax error: {e}") from e
-
-  for node in ast.walk(tree):
-    if isinstance(node, (ast.Import, ast.ImportFrom)):
-      raise WorkflowError(
-          "import statements are not allowed in workflow scripts"
-      )
-    if isinstance(node, ast.While):
-      raise WorkflowError(
-          "while loops are not allowed in workflow scripts; use bounded for"
-          " loops"
-      )
-    if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
-      raise WorkflowError(
-          f"attribute {node.attr!r} is not allowed in workflow scripts"
-      )
-    if isinstance(node, ast.Name) and node.id.startswith("__"):
-      raise WorkflowError(
-          f"name {node.id!r} is not allowed in workflow scripts"
-      )
 
 
 def extract_workflow_source(
@@ -355,8 +424,8 @@ class WorkflowDefinition:
   source: str
   fn: Callable[[], Any]
 
-  def __call__(self, *args: Any, **kwargs: Any) -> Any:
-    return self.fn(*args, **kwargs)
+  def __call__(self, *call_args: Any, **kwargs: Any) -> Any:
+    return self.fn(*call_args, **kwargs)
 
 
 def define(fn: Callable[[], Any]) -> WorkflowDefinition:

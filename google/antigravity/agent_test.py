@@ -1299,7 +1299,10 @@ class AgentConfigTest(unittest.IsolatedAsyncioTestCase):
       script_file = pathlib.Path(ws_dir) / "my_workflow.py"
       script_file.write_text("phase('Audit')\nlog('done')\n", encoding="utf-8")
 
+      captured_prompts = []
+
       async def fake_chat(prompt: str):
+        captured_prompts.append(prompt)
         self.assertIn(str(script_file.resolve()), prompt)
         mock_conversation.history.append(
             types.Step(
@@ -1331,12 +1334,47 @@ class AgentConfigTest(unittest.IsolatedAsyncioTestCase):
           workspaces=[ws_dir],
       )
       async with agent.Agent(config) as ag:
-        # Pass relative script path resolved against workspace.
-        res = await ag.beta.run_workflow(script_path="my_workflow.py")
+        # Pass relative script path resolved against workspace and workflow
+        # args.
+        res = await ag.beta.run_workflow(
+            script_path="my_workflow.py",
+            args={"target": "auth.py", "retries": 2},
+        )
         self.assertEqual(res.script_path, str(script_file.resolve()))
         self.assertEqual(res.output, "done")
+        self.assertIn(
+            'with Args `{"target": "auth.py", "retries": 2}`',
+            captured_prompts[-1],
+        )
+        await ag.beta.run_workflow(script_path="my_workflow.py", args={})
+        self.assertNotIn("with Args", captured_prompts[-1])
         # User's script file must NOT be deleted after run_workflow completes.
         self.assertTrue(script_file.is_file())
+
+        bad_args: Any = ["not", "a", "dict"]
+        with self.assertRaisesRegex(
+            TypeError, r"run_workflow\(\) `args` must be a mapping"
+        ):
+          await ag.beta.run_workflow(
+              script_path="my_workflow.py",
+              args=bad_args,
+          )
+
+        with self.assertRaisesRegex(
+            ValueError, r"run_workflow\(\) `args` must be JSON-serializable"
+        ):
+          await ag.beta.run_workflow(
+              script_path="my_workflow.py",
+              args={"bad": object()},
+          )
+
+        with self.assertRaisesRegex(
+            ValueError, r"run_workflow\(\) `args` must be JSON-serializable"
+        ):
+          await ag.beta.run_workflow(
+              script_path="my_workflow.py",
+              args={"bad_float": float("nan")},
+          )
 
         with self.assertRaises(FileNotFoundError):
           await ag.beta.run_workflow(script_path="does_not_exist.py")

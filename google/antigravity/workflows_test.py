@@ -176,45 +176,49 @@ Line 2"""
     ):
       workflows.validate_workflow_source("def gen_from():\n  yield from [1]\n")
 
-  def test_validate_rejects_import(self):
-    with self.assertRaisesRegex(
-        workflows.WorkflowError,
-        "import statements are not allowed in workflow scripts",
-    ):
-      workflows.validate_workflow_source("import os\nphase('test')\n")
+  def test_define_with_call_tool_multi_turn_agent_and_args(self):
+    @workflows.define
+    async def advanced_workflow():
+      """Workflow using call_tool, ToolError, multi-turn agent, args, and imports."""
+      import json  # pylint: disable=g-import-not-at-top
 
-    with self.assertRaisesRegex(
-        workflows.WorkflowError,
-        "import statements are not allowed in workflow scripts",
-    ):
-      workflows.validate_workflow_source("from os import path\n")
+      target = workflows.args.get("target", "README.md")
+      workflows.phase("Read")
+      try:
+        raw = await workflows.call_tool("read_file", Path=target)
+      except workflows.ToolError as err:
+        workflows.log(err.tool, err.message)
+        raw = "{}"
 
-  def test_validate_rejects_while_loop(self):
-    with self.assertRaisesRegex(
-        workflows.WorkflowError,
-        "while loops are not allowed in workflow scripts",
-    ):
+      reviewer = workflows.agent(
+          "You are a code reviewer.",
+          role="Code Reviewer",
+      )
+      attempts = 0
+      while attempts < 2:
+        verdict = await reviewer(
+            f"Review {json.dumps(raw)}",
+            schema={"type": "string"},
+        )
+        workflows.log(verdict)
+        attempts += 1
+      del reviewer
 
-      @workflows.define
-      def bad_loop():
-        while True:
-          workflows.log("loop")
-
-      del bad_loop
-
-  def test_validate_rejects_private_attribute(self):
-    with self.assertRaisesRegex(
-        workflows.WorkflowError,
-        "attribute '_secret' is not allowed in workflow scripts",
-    ):
-      workflows.validate_workflow_source("x = obj._secret\n")
-
-  def test_validate_rejects_dunder_name(self):
-    with self.assertRaisesRegex(
-        workflows.WorkflowError,
-        "name '__import__' is not allowed in workflow scripts",
-    ):
-      workflows.validate_workflow_source("__import__('os')\n")
+    self.assertIn("import json", advanced_workflow.source)
+    self.assertIn(
+        "target = args.get('target', 'README.md')", advanced_workflow.source
+    )
+    self.assertIn(
+        "raw = await call_tool('read_file', Path=target)",
+        advanced_workflow.source,
+    )
+    self.assertIn("except ToolError as err:", advanced_workflow.source)
+    self.assertIn(
+        "reviewer = agent('You are a code reviewer.', role='Code Reviewer')",
+        advanced_workflow.source,
+    )
+    self.assertIn("while attempts < 2:", advanced_workflow.source)
+    self.assertIn("verdict = await reviewer(", advanced_workflow.source)
 
   def test_validate_rejects_syntax_error(self):
     with self.assertRaisesRegex(
@@ -278,6 +282,10 @@ Line 2"""
       workflows.phase("Explore")
     with self.assertRaisesRegex(RuntimeError, "workflows.agent"):
       workflows.agent("Prompt", schema={"type": "string"})
+    with self.assertRaises(ValueError):
+      workflows.call_tool("")
+    with self.assertRaisesRegex(RuntimeError, "workflows.call_tool"):
+      workflows.call_tool("read_file", Path="README.md")
     with self.assertRaisesRegex(RuntimeError, "workflows.parallel"):
       workflows.parallel(
           ["a"], lambda x: workflows.agent(x, schema={"type": "string"})
@@ -286,6 +294,17 @@ Line 2"""
       workflows.pipeline(
           ["a"], lambda x: workflows.agent(x, schema={"type": "string"})
       )
+    stub_agent = workflows.WorkflowAgent()
+    with self.assertRaisesRegex(RuntimeError, "workflows.agent"):
+      stub_agent("Turn prompt", schema={"type": "string"})
+    with self.assertRaisesRegex(RuntimeError, "workflows.agent"):
+      stub_agent.__await__()
+
+    tool_err = workflows.ToolError("read_file", "permission denied")
+    self.assertIsInstance(tool_err, workflows.WorkflowError)
+    self.assertEqual(tool_err.tool, "read_file")
+    self.assertEqual(tool_err.message, "permission denied")
+    self.assertEqual(str(tool_err), "read_file: permission denied")
 
 
 if __name__ == "__main__":

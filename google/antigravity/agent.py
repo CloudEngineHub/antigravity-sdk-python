@@ -14,9 +14,10 @@
 
 """Layer 1 API for Antigravity SDK."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import contextlib
 import inspect
+import json
 import logging
 import os
 import pathlib
@@ -278,6 +279,7 @@ class Agent:
       ) = None,
       script_path: str | os.PathLike[str] | None = None,
       description: str = "",
+      args: Mapping[str, Any] | None = None,
   ) -> types.WorkflowResult:
     """Executes a `@workflows.define` function or a `.py` workflow script.
 
@@ -286,11 +288,13 @@ class Agent:
     Args:
       workflow: A `@workflows.define` workflow definition or a zero-argument
         Python function (`async def` or `def`) using `workflows` primitives
-        (`phase`, `log`, `agent`, `parallel`, `pipeline`). Mutually exclusive
-        with `script_path`.
+        (`phase`, `log`, `agent`, `call_tool`, `parallel`, `pipeline`). Mutually
+        exclusive with `script_path`.
       script_path: Path to an existing `.py` workflow script on disk. Mutually
         exclusive with `workflow`.
       description: Optional human-readable description of the workflow run.
+      args: Optional JSON-serializable mapping of input arguments exposed to the
+        workflow script via `workflows.args` (`args`).
 
     Returns:
       A `WorkflowResult` (subclass of `ChatResponse`) containing the executed
@@ -299,9 +303,10 @@ class Agent:
 
     Raises:
       RuntimeError: If the agent session has not been started.
+      TypeError: If `args` is not a `Mapping`.
       ValueError: If `BuiltinTools.RUN_WORKFLOW` is disabled on this Agent, if
-        both or neither of `workflow` and `script_path` are provided, or if
-        `script_path` is an empty string.
+        both or neither of `workflow` and `script_path` are provided, if
+        `script_path` is an empty string, or if `args` is not JSON-serializable.
       FileNotFoundError: If `script_path` is provided and does not exist.
       workflow_lib.WorkflowError: If the workflow script or function fails AST
         validation.
@@ -312,6 +317,19 @@ class Agent:
       raise ValueError(
           "run_workflow() requires exactly one of `workflow` or `script_path`."
       )
+    args_json: str | None = None
+    if args is not None:
+      if not isinstance(args, Mapping):
+        raise TypeError("run_workflow() `args` must be a mapping.")
+      try:
+        args_dict = dict(args)
+        args_json = (
+            json.dumps(args_dict, allow_nan=False) if args_dict else None
+        )
+      except (TypeError, ValueError, OverflowError) as e:
+        raise ValueError(
+            f"run_workflow() `args` must be JSON-serializable: {e}"
+        ) from e
 
     conv = self.conversation
     active_tools = connection_module.resolve_active_tools(
@@ -342,9 +360,11 @@ class Agent:
         )
 
       history_start = len(conv.history)
+      args_clause = f" with Args `{args_json}`" if args_json is not None else ""
       prompt = (
           f"Run the workflow script at `{resolved_path}`"
-          f" ({effective_description}) using the `run_workflow` tool."
+          f" ({effective_description}){args_clause} using the `run_workflow`"
+          " tool."
       )
       chat_resp = await self.chat(prompt)
       response_text = await chat_resp.text()
