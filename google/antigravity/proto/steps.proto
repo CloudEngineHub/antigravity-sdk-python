@@ -319,7 +319,9 @@ message ViewFileCallStep {
   uint32 start_line = 2;
   uint32 end_line = 3;
 }
-message ViewFileResultStep {}
+message ViewFileResultStep {
+  string error_message = 1;
+}
 message EditFileCallStep {
   string file_path = 1;
 }
