@@ -310,6 +310,7 @@ message SkillSource {
 message SkillsConfig {
   bool enabled = 1 [default = true];
   repeated .antigravity.localharness.SkillSource skills = 2;
+  repeated string preactivate_skills = 6;
 }
 message ManageTaskToolConfig {
   bool enabled = 1;
