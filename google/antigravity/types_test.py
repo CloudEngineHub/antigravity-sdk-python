@@ -1298,6 +1298,18 @@ class ImageTest(unittest.TestCase):
       self.assertEqual(img.mime_type, "image/png")
       self.assertEqual(img.description, "profile photo")
 
+  def test_from_file_expands_user_tilde(self):
+    """Verifies that Image.from_file expands ~ to user home directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+      test_file = pathlib.Path(tmpdir) / "photo.png"
+      test_file.write_bytes(b"png_file_content")
+      with mock.patch.object(
+          pathlib.Path, "expanduser", autospec=True, return_value=test_file
+      ):
+        img = types.Image.from_file("~/photo.png")
+        self.assertEqual(img.data, b"png_file_content")
+        self.assertEqual(img.mime_type, "image/png")
+
   def test_from_file_inference_failure_raises(self):
     """Verifies that from_file loader raises ValueError when extension is unknown."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1481,6 +1493,30 @@ class ContentFromFileResolverTest(parameterized.TestCase):
       ):
         with self.assertRaisesRegex(OSError, "Failed to read file"):
           types.from_file(tmp_file)
+
+  def test_from_file_expands_user_tilde(self):
+    """Verifies that from_file expands ~ to user home directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+      test_file = pathlib.Path(tmpdir) / "doc.pdf"
+      test_file.write_bytes(b"%PDF-sample")
+      with mock.patch.object(
+          pathlib.Path, "expanduser", autospec=True, return_value=test_file
+      ):
+        doc = types.from_file("~/doc.pdf")
+        self.assertIsInstance(doc, types.Document)
+        self.assertEqual(doc.data, b"%PDF-sample")
+        self.assertEqual(doc.mime_type, "application/pdf")
+
+  def test_read_file_safely_expands_user_tilde(self):
+    """Verifies that _read_file_safely expands ~ to user home directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+      test_file = pathlib.Path(tmpdir) / "raw.bin"
+      test_file.write_bytes(b"binary_content")
+      with mock.patch.object(
+          pathlib.Path, "expanduser", autospec=True, return_value=test_file
+      ):
+        data = types._read_file_safely("~/raw.bin")
+        self.assertEqual(data, b"binary_content")
 
 
 class ContentFromBytesResolverTest(parameterized.TestCase):

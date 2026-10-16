@@ -2047,7 +2047,7 @@ def _read_file_safely(path: str | pathlib.Path) -> bytes:
       PermissionError: If the file is not readable.
       OSError: For other filesystem errors.
   """
-  file_path = pathlib.Path(path)
+  file_path = pathlib.Path(path).expanduser()
   try:
     return file_path.read_bytes()
   except FileNotFoundError as exc:
@@ -2079,7 +2079,7 @@ def _read_file_and_guess_mime(
   Raises:
       ValueError: If the MIME type cannot be guessed.
   """
-  file_path = pathlib.Path(path)
+  file_path = pathlib.Path(path).expanduser()
   data = _read_file_safely(file_path)
   mime_guess, _ = mimetypes.guess_type(file_path)
   if not mime_guess:
