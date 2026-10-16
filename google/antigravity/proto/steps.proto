@@ -115,6 +115,7 @@ message ToolResultStep {
   }
   string call_id = 1;
   bytes signature = 2;
+  string error = 20;
 }
 message FunctionCallStep {
   string name = 1;
