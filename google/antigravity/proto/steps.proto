@@ -169,6 +169,8 @@ message FunctionResultStep {
     (gaos.parsing.json_discriminator_values) = "image",
     (gaos.parsing.json_discriminator_values) = "function",
     (gaos.parsing.json_discriminator_values) = "video",
+    (gaos.parsing.json_discriminator_values) = "document",
+    (gaos.parsing.json_discriminator_values) = "audio",
     (gaos.parsing.sub_content_name) = "FunctionResultSubContent"
   ];
 }
