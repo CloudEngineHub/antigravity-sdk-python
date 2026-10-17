@@ -944,6 +944,21 @@ class LocalHarnessEventProcessorTest(unittest.IsolatedAsyncioTestCase):
         {"$ref": "https://example.com/video/123"},
     )
 
+  async def test_send_tool_results_keeps_non_ascii_text_readable(self):
+    """The harness hands response_json to the model verbatim, unescaped."""
+    send_mock = mock.AsyncMock()
+    processor = event_processor.LocalHarnessEventProcessor(
+        send_input_event_fn=send_mock
+    )
+
+    await processor._send_tool_results(
+        [types.ToolResult(id="call_1", name="test_tool", result="요즘 어깨가")]
+    )
+
+    resp = send_mock.call_args[0][0].tool_response
+    self.assertIn("요즘 어깨가", resp.response_json)
+    self.assertEqual(json.loads(resp.response_json), {"result": "요즘 어깨가"})
+
   async def test_send_tool_results_with_proto_extensions_non_dict(self):
     """Verifies _send_tool_results handles ToolResult containing non-dict with proto extensions."""
     send_mock = mock.AsyncMock()

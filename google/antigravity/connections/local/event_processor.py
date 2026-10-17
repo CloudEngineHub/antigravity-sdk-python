@@ -1154,7 +1154,8 @@ class LocalHarnessEventProcessor(BaseLocalEventProcessor):
               id=result.id,
               response=struct_converter.to_struct(res_data),
               response_json=json.dumps(
-                  struct_converter.to_json_fallback(res_data)
+                  struct_converter.to_json_fallback(res_data),
+                  ensure_ascii=False,
               ),
           )
         else:
@@ -1171,7 +1172,7 @@ class LocalHarnessEventProcessor(BaseLocalEventProcessor):
           response = localharness_pb2.ToolResponse(
               id=result.id,
               response_json=json.dumps(
-                  self.tool_result_to_dict(result_for_json)
+                  self.tool_result_to_dict(result_for_json), ensure_ascii=False
               ),
               supplemental_media=[
                   localharness_pb2.Media(
