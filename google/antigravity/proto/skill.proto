@@ -39,4 +39,6 @@ message Skill {
   string content = 4;
   repeated string allowed_tools = 5;
   map<string, string> metadata = 6;
+  string version = 9;
+  repeated string channels = 10;
 }
