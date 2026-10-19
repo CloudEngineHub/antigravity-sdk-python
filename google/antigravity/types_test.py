@@ -1322,6 +1322,11 @@ class ImageTest(unittest.TestCase):
       ):
         types.Image.from_file(tmp_file)
 
+  def test_case_insensitive_and_whitespace_normalization(self):
+    """Verifies that Image normalizes MIME type to lowercase and strips whitespace."""
+    img = types.Image(data=b"png_data", mime_type=" IMAGE/PNG\n ")
+    self.assertEqual(img.mime_type, "image/png")
+
 
 class DocumentTest(parameterized.TestCase):
   """Tests for the Document content attachment primitive and its validators."""
@@ -1368,6 +1373,11 @@ class DocumentTest(parameterized.TestCase):
       self.assertEqual(doc.mime_type, "application/pdf")
       self.assertEqual(doc.description, "monthly report")
 
+  def test_case_insensitive_and_whitespace_normalization(self):
+    """Verifies that Document normalizes MIME type to lowercase and strips whitespace."""
+    doc = types.Document(data=b"pdf_data", mime_type=" Application/PDF ")
+    self.assertEqual(doc.mime_type, "application/pdf")
+
 
 class AudioTest(parameterized.TestCase):
   """Validates the Audio content attachment primitive and its validators."""
@@ -1404,6 +1414,11 @@ class AudioTest(parameterized.TestCase):
     with self.assertRaises(pydantic.ValidationError):
       types.Audio(data=b"wav_bytes", mime_type="audio/unsupported-wav")
 
+  def test_case_insensitive_and_whitespace_normalization(self):
+    """Verifies that Audio normalizes MIME type to lowercase and strips whitespace."""
+    audio = types.Audio(data=b"mp3_data", mime_type=" Audio/MPEG\t")
+    self.assertEqual(audio.mime_type, "audio/mpeg")
+
 
 class VideoTest(unittest.TestCase):
   """Validates the Video content attachment primitive and its validators."""
@@ -1418,6 +1433,11 @@ class VideoTest(unittest.TestCase):
     """Verifies that an unsupported Video MIME type triggers ValidationError."""
     with self.assertRaises(pydantic.ValidationError):
       types.Video(data=b"mov_bytes", mime_type="video/unsupported-mov")
+
+  def test_case_insensitive_and_whitespace_normalization(self):
+    """Verifies that Video normalizes MIME type to lowercase and strips whitespace."""
+    video = types.Video(data=b"mp4_data", mime_type=" VIDEO/MP4 ")
+    self.assertEqual(video.mime_type, "video/mp4")
 
 
 class ContentFromFileResolverTest(parameterized.TestCase):
@@ -1542,6 +1562,16 @@ class ContentFromBytesResolverTest(parameterized.TestCase):
     """Verifies that an unsupported MIME type raises a descriptive ValueError."""
     with self.assertRaisesRegex(ValueError, "Unsupported MIME type"):
       types.from_bytes(b"data", mime_type="application/x-unsupported-custom")
+
+  def test_resolves_from_bytes_case_insensitive_and_whitespace(self):
+    """Verifies that from_bytes normalizes case-insensitive and padded MIME types."""
+    res_img = types.from_bytes(b"fake_bytes", mime_type=" IMAGE/PNG\n ")
+    self.assertIsInstance(res_img, types.Image)
+    self.assertEqual(res_img.mime_type, "image/png")
+
+    res_doc = types.from_bytes(b"fake_bytes", mime_type=" Application/PDF ")
+    self.assertIsInstance(res_doc, types.Document)
+    self.assertEqual(res_doc.mime_type, "application/pdf")
 
 
 class ChatResponseStreamTest(unittest.IsolatedAsyncioTestCase):

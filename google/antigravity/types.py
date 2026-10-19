@@ -2102,11 +2102,12 @@ class _BaseMedia(pydantic.BaseModel):
   @classmethod
   def _validate_mime_type(cls, v: str) -> str:
     """Validates that the MIME type is supported for this media type."""
+    normalized = v.strip().lower()
     if cls is _BaseMedia:
-      return v
-    if v not in cls._SUPPORTED_MIMES:
+      return normalized
+    if normalized not in cls._SUPPORTED_MIMES:
       raise ValueError(f"Unsupported {cls.__name__} MIME type: '{v}'")
-    return v
+    return normalized
 
   @classmethod
   def from_file(
@@ -2234,7 +2235,8 @@ def from_bytes(
   Raises:
       ValueError: If the MIME type is unsupported.
   """
-  media_cls = _MIME_TO_MEDIA_CLASS.get(mime_type)
+  normalized_mime = mime_type.strip().lower()
+  media_cls = _MIME_TO_MEDIA_CLASS.get(normalized_mime)
   if media_cls is None:
     raise ValueError(
         f"Unsupported MIME type: '{mime_type}'. "
@@ -2242,5 +2244,5 @@ def from_bytes(
     )
   return cast(
       Image | Document | Audio | Video,
-      media_cls(data=data, mime_type=mime_type, description=description),
+      media_cls(data=data, mime_type=normalized_mime, description=description),
   )
