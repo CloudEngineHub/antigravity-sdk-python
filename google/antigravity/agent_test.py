@@ -15,6 +15,7 @@
 """Tests for Agent API."""
 
 import contextlib
+import errno
 import os
 import pathlib
 import tempfile
@@ -1431,6 +1432,137 @@ class AgentConfigTest(unittest.IsolatedAsyncioTestCase):
       self.assertEqual(
           cm.exception.tool_name, types.BuiltinTools.RUN_WORKFLOW.value
       )
+
+  def test_materialize_workflow_function_falls_back_across_workspace_errors(
+      self,
+  ):
+    @workflows.define
+    def ro_wf():
+      workflows.phase("ReadOnlyCheck")
+
+    real_ntf = tempfile.NamedTemporaryFile
+    call_dirs = []
+
+    def fake_ntf(*args, **kwargs):
+      call_dirs.append(kwargs.get("dir"))
+      if kwargs.get("dir") is not None:
+        raise OSError(errno.EROFS, "Read-only file system")
+      return real_ntf(*args, **kwargs)
+
+    with tempfile.TemporaryDirectory() as ws_dir:
+      resolved_ws = str(pathlib.Path(ws_dir).resolve())
+      with mock.patch.object(
+          tempfile, "NamedTemporaryFile", side_effect=fake_ntf
+      ):
+        path, _, _ = agent._materialize_workflow_function(
+            ro_wf, [ws_dir], "desc"
+        )
+      try:
+        self.assertEqual(call_dirs, [resolved_ws, None])
+        self.assertTrue(os.path.isfile(path))
+      finally:
+        if os.path.exists(path):
+          os.unlink(path)
+
+    # Also verify fallback from a failing first workspace to a writable second
+    # workspace.
+    with (
+        tempfile.TemporaryDirectory() as ws_ro,
+        tempfile.TemporaryDirectory() as ws_rw,
+    ):
+      resolved_ro = str(pathlib.Path(ws_ro).resolve())
+      resolved_rw = str(pathlib.Path(ws_rw).resolve())
+
+      def fake_ntf_second_writable(*args, **kwargs):
+        if kwargs.get("dir") == resolved_ro:
+          raise RuntimeError("Unusable workspace mount")
+        return real_ntf(*args, **kwargs)
+
+      with mock.patch.object(
+          tempfile, "NamedTemporaryFile", side_effect=fake_ntf_second_writable
+      ):
+        path2, _, _ = agent._materialize_workflow_function(
+            ro_wf, [ws_ro, ws_rw], "desc"
+        )
+      try:
+        self.assertTrue(path2.startswith(resolved_rw))
+        self.assertTrue(os.path.isfile(path2))
+      finally:
+        if os.path.exists(path2):
+          os.unlink(path2)
+
+    # Also verify partial temp file cleanup when write() fails after file
+    # creation.
+    with (
+        tempfile.TemporaryDirectory() as ws_full,
+        tempfile.TemporaryDirectory() as ws_ok,
+    ):
+      resolved_full = str(pathlib.Path(ws_full).resolve())
+      resolved_ok = str(pathlib.Path(ws_ok).resolve())
+      leaked_paths = []
+
+      def fake_ntf_write_error(*args, **kwargs):
+        f = real_ntf(*args, **kwargs)
+        if kwargs.get("dir") == resolved_full:
+          leaked_paths.append(f.name)
+          f.write = mock.MagicMock(
+              side_effect=OSError(errno.ENOSPC, "No space left on device")
+          )
+        return f
+
+      with mock.patch.object(
+          tempfile, "NamedTemporaryFile", side_effect=fake_ntf_write_error
+      ):
+        path3, _, _ = agent._materialize_workflow_function(
+            ro_wf, [ws_full, ws_ok], "desc"
+        )
+      try:
+        self.assertEqual(len(leaked_paths), 1)
+        self.assertFalse(os.path.exists(leaked_paths[0]))
+        self.assertTrue(path3.startswith(resolved_ok))
+        self.assertTrue(os.path.isfile(path3))
+      finally:
+        if os.path.exists(path3):
+          os.unlink(path3)
+
+  def test_resolve_workflow_script_path_skips_inaccessible_workspaces(self):
+    with tempfile.TemporaryDirectory() as ws_dir:
+      script_file = pathlib.Path(ws_dir) / "wf.py"
+      script_file.write_text("phase('Run')\n", encoding="utf-8")
+      resolved, desc = agent._resolve_workflow_script_path(
+          "wf.py",
+          ["\x00invalid_ws", "/nonexistent/unmounted/workspace", ws_dir],
+          "",
+      )
+      self.assertEqual(resolved, str(script_file.resolve()))
+      self.assertEqual(desc, "Run workflow wf.py")
+
+      with self.assertRaises(FileNotFoundError):
+        agent._resolve_workflow_script_path(
+            "\x00invalid_script.py", [ws_dir], ""
+        )
+
+    for bad_source in ("phase('a')\x00", "break\n"):
+      with self.assertRaisesRegex(
+          workflows.WorkflowError, "workflow syntax error"
+      ):
+        workflows.validate_workflow_source(bad_source)
+
+    with mock.patch.object(
+        workflows.inspect, "getsource", side_effect=OSError("no source")
+    ):
+      with self.assertRaisesRegex(
+          workflows.WorkflowError, "cannot inspect source of workflow function"
+      ):
+        workflows.extract_workflow_source(lambda: None)
+
+    with mock.patch.object(
+        workflows.inspect, "getsource", return_value="def wf():\n  \x00\n"
+    ):
+      with self.assertRaisesRegex(
+          workflows.WorkflowError, "workflow syntax error"
+      ):
+        workflows.extract_workflow_source(lambda: None)
 
 
 if __name__ == "__main__":

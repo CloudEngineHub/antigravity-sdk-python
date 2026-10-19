@@ -65,20 +65,58 @@ def _resolve_workflow_script_path(
     raise ValueError("run_workflow() requires a non-empty script_path.")
   path_obj = pathlib.Path(raw_path).expanduser()
   if not path_obj.is_absolute() and workspaces:
-    candidate = (
-        pathlib.Path(os.fspath(workspaces[0])).expanduser().resolve() / path_obj
-    )
-    if candidate.is_file():
-      path_obj = candidate
-  resolved_path = str(path_obj.resolve())
-  if not pathlib.Path(resolved_path).is_file():
+    for ws in workspaces:
+      try:
+        candidate = (
+            pathlib.Path(os.fspath(ws)).expanduser().resolve() / path_obj
+        )
+        if candidate.is_file():
+          path_obj = candidate
+          break
+      except Exception:  # pylint: disable=broad-exception-caught
+        continue
+  try:
+    resolved_path_obj = path_obj.resolve()
+    is_regular_file = resolved_path_obj.is_file()
+  except Exception as e:
+    raise FileNotFoundError(
+        f"Workflow script not found: {raw_path} ({e})"
+    ) from e
+  resolved_path = str(resolved_path_obj)
+  if not is_regular_file:
     raise FileNotFoundError(f"Workflow script not found: {resolved_path}")
-  script_source = pathlib.Path(resolved_path).read_text(encoding="utf-8")
+  script_source = resolved_path_obj.read_text(encoding="utf-8")
   workflow_lib.validate_workflow_source(script_source)
   effective_description = (
-      description or f"Run workflow {pathlib.Path(resolved_path).name}"
+      description or f"Run workflow {resolved_path_obj.name}"
   )
   return resolved_path, effective_description
+
+
+def _write_temp_workflow_script(
+    script_source: str,
+    prefix: str,
+    target_dir: str | None,
+) -> str:
+  """Writes `script_source` to a temporary `.py` file in `target_dir`."""
+  temp_path: str | None = None
+  try:
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".py",
+        prefix=prefix,
+        dir=target_dir,
+        delete=False,
+    ) as tmp_file:
+      temp_path = tmp_file.name
+      tmp_file.write(script_source)
+    return temp_path
+  except Exception:
+    if temp_path is not None:
+      with contextlib.suppress(Exception):
+        os.unlink(temp_path)
+    raise
 
 
 def _materialize_workflow_function(
@@ -95,33 +133,19 @@ def _materialize_workflow_function(
       else (inspect.getdoc(fn_or_def) or "").strip()
   )
   effective_description = description or wf_doc or f"Run workflow {wf_name}"
-  temp_dir: str | None = None
-  if workspaces:
-    ws_candidate = pathlib.Path(os.fspath(workspaces[0])).expanduser().resolve()
-    if ws_candidate.is_dir() and os.access(ws_candidate, os.W_OK):
-      temp_dir = str(ws_candidate)
-  try:
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        suffix=".py",
-        prefix=f".agy_workflow_{safe_wf_name}_",
-        dir=temp_dir,
-        delete=False,
-    ) as tmp_file:
-      tmp_file.write(script_source)
-      temp_script_path = tmp_file.name
-  except PermissionError:
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        suffix=".py",
-        prefix=f".agy_workflow_{safe_wf_name}_",
-        dir=None,
-        delete=False,
-    ) as tmp_file:
-      tmp_file.write(script_source)
-      temp_script_path = tmp_file.name
+  prefix = f".agy_workflow_{safe_wf_name}_"
+  temp_script_path: str | None = None
+  for ws in workspaces or ():
+    try:
+      ws_dir = str(pathlib.Path(os.fspath(ws)).expanduser().resolve())
+      temp_script_path = _write_temp_workflow_script(
+          script_source, prefix, ws_dir
+      )
+      break
+    except Exception:  # pylint: disable=broad-exception-caught
+      continue
+  if temp_script_path is None:
+    temp_script_path = _write_temp_workflow_script(script_source, prefix, None)
   resolved_path = str(pathlib.Path(temp_script_path).resolve())
   return resolved_path, effective_description, temp_script_path
 
@@ -326,7 +350,7 @@ class Agent:
         args_json = (
             json.dumps(args_dict, allow_nan=False) if args_dict else None
         )
-      except (TypeError, ValueError, OverflowError) as e:
+      except Exception as e:
         raise ValueError(
             f"run_workflow() `args` must be JSON-serializable: {e}"
         ) from e
@@ -407,7 +431,7 @@ class Agent:
       )
     finally:
       if temp_script_path is not None:
-        with contextlib.suppress(OSError):
+        with contextlib.suppress(Exception):
           os.unlink(temp_script_path)
 
   @property

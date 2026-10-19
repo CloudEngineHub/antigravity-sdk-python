@@ -297,14 +297,9 @@ def validate_workflow_source(source: str) -> None:
   """
   try:
     tree = ast.parse(source, "<workflow>")
-  except SyntaxError as e:
-    raise WorkflowError(f"workflow syntax error: {e}") from e
-
-  _check_no_top_level_return_or_yield(tree.body)
-
-  try:
+    _check_no_top_level_return_or_yield(tree.body)
     compile(tree, "<workflow>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
-  except SyntaxError as e:
+  except (SyntaxError, ValueError, TypeError) as e:
     raise WorkflowError(f"workflow syntax error: {e}") from e
 
 
@@ -358,7 +353,7 @@ def extract_workflow_source(
 
   try:
     raw_source = inspect.getsource(fn_or_def)
-  except (OSError, TypeError) as e:
+  except Exception as e:
     raise WorkflowError(
         f"cannot inspect source of workflow function {fn_or_def!r}: {e}"
     ) from e
@@ -370,7 +365,7 @@ def extract_workflow_source(
   source_to_parse = f"if True:\n{raw_source}" if is_indented else raw_source
   try:
     mod_tree = ast.parse(source_to_parse)
-  except SyntaxError as e:
+  except (SyntaxError, ValueError, TypeError) as e:
     raise WorkflowError(f"workflow syntax error: {e}") from e
 
   stmts = (
