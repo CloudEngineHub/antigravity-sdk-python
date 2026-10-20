@@ -39,6 +39,8 @@ _SCHEMA_KEYWORD_MAP: dict[str, str] = {
     "dependent_schemas": "dependentSchemas",
     "unevaluated_properties": "unevaluatedProperties",
     "unevaluated_items": "unevaluatedItems",
+    "read_only": "readOnly",
+    "write_only": "writeOnly",
 }
 
 _UPPERCASE_TYPES: frozenset[str] = frozenset((
@@ -68,6 +70,11 @@ _LITERAL_KEYWORDS: frozenset[str] = frozenset((
     "example",
     "examples",
     "dependentRequired",
+    "title",
+    "description",
+    "summary",
+    "format",
+    "pattern",
 ))
 
 
@@ -76,8 +83,10 @@ def normalize_schema(schema: Any) -> Any:
 
   Converts uppercase GenAI/Protobuf type names to lowercase strings, converts
   snake_case JSON Schema keywords to camelCase (e.g. `any_of` -> `anyOf`,
-  `multiple_of` -> `multipleOf`), and preserves literal values (`enum`, `const`,
-  `default`, `example`, `examples`, `dependentRequired`).
+  `multiple_of` -> `multipleOf`, `read_only` -> `readOnly`), and preserves
+  literal values and metadata (`enum`, `const`, `default`, `example`,
+  `examples`, `dependentRequired`, `title`, `description`, `summary`, `format`,
+  `pattern`).
 
   Args:
       schema: The raw schema dictionary, list, string, or GenAI Type enum.

@@ -295,6 +295,54 @@ class SchemaUtilsTest(unittest.TestCase):
         {"additionalProperties": True, "unevaluatedProperties": False},
     )
 
+  def test_normalize_read_only_and_write_only(self):
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "read_only": True},
+            "password": {"type": "string", "write_only": True},
+        },
+    }
+    normalized = schema_utils.normalize_schema(input_schema)
+    self.assertIn("readOnly", normalized["properties"]["id"])
+    self.assertTrue(normalized["properties"]["id"]["readOnly"])
+    self.assertNotIn("read_only", normalized["properties"]["id"])
+    self.assertIn("writeOnly", normalized["properties"]["password"])
+    self.assertTrue(normalized["properties"]["password"]["writeOnly"])
+    self.assertNotIn("write_only", normalized["properties"]["password"])
+
+  def test_preserves_literal_metadata_matching_type_names(self):
+    input_schema = {
+        "type": "object",
+        "title": "OBJECT",
+        "description": "STRING",
+        "summary": "NUMBER",
+        "format": "INTEGER",
+        "pattern": "BOOLEAN",
+        "properties": {
+            "val": {
+                "type": "STRING",
+                "title": "STRING",
+                "description": "OBJECT",
+                "format": "NUMBER",
+                "pattern": "ARRAY",
+            }
+        },
+    }
+    normalized = schema_utils.normalize_schema(input_schema)
+    self.assertEqual(normalized["type"], "object")
+    self.assertEqual(normalized["title"], "OBJECT")
+    self.assertEqual(normalized["description"], "STRING")
+    self.assertEqual(normalized["summary"], "NUMBER")
+    self.assertEqual(normalized["format"], "INTEGER")
+    self.assertEqual(normalized["pattern"], "BOOLEAN")
+    prop = normalized["properties"]["val"]
+    self.assertEqual(prop["type"], "string")
+    self.assertEqual(prop["title"], "STRING")
+    self.assertEqual(prop["description"], "OBJECT")
+    self.assertEqual(prop["format"], "NUMBER")
+    self.assertEqual(prop["pattern"], "ARRAY")
+
   def test_passthrough_non_schema_values(self):
     self.assertEqual(schema_utils.normalize_schema(42), 42)
     self.assertEqual(schema_utils.normalize_schema(3.14), 3.14)
