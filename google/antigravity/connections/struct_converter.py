@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Structured data conversion utilities for LocalConnection and genai.Content."""
+"""Structured data conversion utilities for SDK connections and genai.Content."""
 
 from collections import abc
 import dataclasses
@@ -287,6 +287,10 @@ def to_json_fallback(obj: Any) -> Any:
     uri = _get_uri(obj)
     if uri:
       return {"$ref": uri}
+    if isinstance(obj, content_pb2.TextContent):
+      return obj.text
+    if isinstance(obj, content_pb2.Content) and obj.HasField("text"):
+      return obj.text.text
     return str(obj)
 
   if isinstance(obj, content_pb2.Struct) or (
@@ -340,6 +344,12 @@ def unwrap_wire_value(val: Any) -> Any:
   When serialized with `json_format.MessageToDict`, values appear as
   `{"string_value": "..."}` or `{"stringValue": "..."}`, etc. This helper
   recursively extracts the inner native Python values.
+
+  Args:
+    val: The serialized `genai.Value` dict or primitive value to unwrap.
+
+  Returns:
+    The unwrapped native Python value.
   """
   if not isinstance(val, dict):
     return val
@@ -374,6 +384,12 @@ def unwrap_wire_struct(val: Any) -> dict[str, Any]:
 
   If val is already a plain dict without a 'fields' list, it is returned as is.
   If val is not a dict, an empty dict is returned.
+
+  Args:
+    val: The serialized `genai.Struct` dict or plain mapping to unwrap.
+
+  Returns:
+    The unpacked Python dictionary.
   """
   if not isinstance(val, dict):
     return {}
@@ -385,3 +401,36 @@ def unwrap_wire_struct(val: Any) -> dict[str, Any]:
     return unpacked
   return val
 
+
+_DIFF_ACTION_PREFIX = {
+    "LINE_ACTION_INSERT": "+",
+    "LINE_ACTION_DELETE": "-",
+}
+
+
+def format_diff_blocks(
+    diff_blocks: abc.Sequence[abc.Mapping[str, Any]],
+) -> str:
+  """Formats `EditFileResultStep.diff_block` dicts as a unified diff string.
+
+  Args:
+    diff_blocks: Sequence of serialized `DiffBlock` mappings (`start_line`,
+      `end_line`, and `lines` with `action` and `text`).
+
+  Returns:
+    A human-readable unified diff string.
+  """
+  chunks: list[str] = []
+  for block in diff_blocks:
+    if not isinstance(block, abc.Mapping):
+      continue
+    start = block.get("start_line", 0)
+    end = block.get("end_line", 0)
+    lines = [f"@@ -{start} +{end} @@"]
+    for line in block.get("lines") or ():
+      if not isinstance(line, abc.Mapping):
+        continue
+      prefix = _DIFF_ACTION_PREFIX.get(str(line.get("action", "")), " ")
+      lines.append(f"{prefix}{line.get('text', '')}")
+    chunks.append("\n".join(lines))
+  return "\n".join(chunks)

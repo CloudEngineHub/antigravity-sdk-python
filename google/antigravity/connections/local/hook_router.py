@@ -20,7 +20,7 @@ from typing import Any, Callable, Coroutine
 
 from google.antigravity.proto import localharness_pb2
 from google.antigravity import types
-from google.antigravity.connections.local import struct_converter
+from google.antigravity.connections import struct_converter
 from google.antigravity.connections.local.local_connection_config import make_step_id
 from google.antigravity.connections.local.local_connection_config import normalize_wire_path
 from google.antigravity.connections.local.local_connection_config import PROTO_FIELD_TO_SDK_NAME

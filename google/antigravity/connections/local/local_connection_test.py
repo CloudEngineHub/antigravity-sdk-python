@@ -40,12 +40,12 @@ import websockets
 from google.antigravity.proto import localharness_pb2
 from google.antigravity import models as models_lib
 from google.antigravity import types
+from google.antigravity.connections import struct_converter
 from google.antigravity.connections.local import event_processor
 from google.antigravity.connections.local import litert_connection_config
 from google.antigravity.connections.local import local_connection
 from google.antigravity.connections.local import local_connection_config
 from google.antigravity.connections.local import local_openai_connection_config
-from google.antigravity.connections.local import struct_converter
 from google.antigravity.connections.local import test_utils
 from google.antigravity.hooks import hook_runner
 from google.antigravity.hooks import hooks as hooks_base

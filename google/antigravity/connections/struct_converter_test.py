@@ -21,7 +21,7 @@ from absl.testing import absltest
 import pydantic
 
 from google.antigravity.proto import content_pb2
-from google.antigravity.connections.local import struct_converter
+from google.antigravity.connections import struct_converter
 
 
 class SamplePydanticModel(pydantic.BaseModel):
@@ -392,6 +392,41 @@ class StructConverterTest(absltest.TestCase):
     val_bool = content_pb2.Value(bool_value=False)
     self.assertFalse(struct_converter.to_json_fallback(val_bool))
 
+    txt = content_pb2.TextContent(text="inline text")
+    self.assertEqual(struct_converter.to_json_fallback(txt), "inline text")
+
+    cnt_txt = content_pb2.Content(text=content_pb2.TextContent(text="wrapped"))
+    self.assertEqual(struct_converter.to_json_fallback(cnt_txt), "wrapped")
+
+    prim_struct = struct_converter.to_struct("raw")
+    self.assertEqual(prim_struct.fields[0].name, "result")
+    self.assertEqual(prim_struct.fields[0].value.string_value, "raw")
+
+    wrapped_uri = content_pb2.Content(
+        image=content_pb2.ImageContent(uri="https://example.com/wrapped.png")
+    )
+    self.assertEqual(
+        struct_converter.to_json_fallback(wrapped_uri),
+        {"$ref": "https://example.com/wrapped.png"},
+    )
+    self.assertEqual(
+        struct_converter.to_json_fallback(
+            content_pb2.Value(struct_value=prim_struct)
+        ),
+        {"result": "raw"},
+    )
+    self.assertEqual(
+        struct_converter.to_json_fallback(
+            content_pb2.Value(
+                list_value=content_pb2.ListValue(
+                    values=[content_pb2.Value(string_value="x")]
+                )
+            )
+        ),
+        ["x"],
+    )
+    self.assertEqual(struct_converter.to_json_fallback(content_pb2.Value()), "")
+
     class UnserializableCustomObj:
 
       def __str__(self):
@@ -480,10 +515,29 @@ class StructConverterTest(absltest.TestCase):
     self.assertEqual(struct_converter.unwrap_wire_struct([1, 2]), {})
 
     # Test unwrap_wire_value non-dict passthrough
-    self.assertEqual(struct_converter.unwrap_wire_value("raw_string"), "raw_string")
+    self.assertEqual(
+        struct_converter.unwrap_wire_value("raw_string"), "raw_string"
+    )
     self.assertEqual(struct_converter.unwrap_wire_value(123), 123)
+
+  def test_format_diff_blocks(self):
+    diff_blocks = [
+        {
+            "start_line": 10,
+            "end_line": 12,
+            "lines": [
+                {"action": "LINE_ACTION_NONE", "text": "def foo():"},
+                {"action": "LINE_ACTION_DELETE", "text": "  return 1"},
+                {"action": "LINE_ACTION_INSERT", "text": "  return 2"},
+            ],
+        },
+    ]
+    self.assertEqual(
+        struct_converter.format_diff_blocks(diff_blocks),
+        "@@ -10 +12 @@\n def foo():\n-  return 1\n+  return 2",
+    )
+    self.assertEqual(struct_converter.format_diff_blocks([]), "")
 
 
 if __name__ == "__main__":
   absltest.main()
-
