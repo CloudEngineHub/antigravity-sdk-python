@@ -143,7 +143,63 @@ Line 2"""
     def one_liner():
       phase("SingleLine")  # pylint: disable=multiple-statements
 
-    self.assertEqual(one_liner.source.strip(), "phase('SingleLine')")
+    self.assertEqual(one_liner.source.strip(), "_ = phase('SingleLine')")
+
+  def test_define_rewrites_trailing_expression_to_assignment(self):
+    @workflows.define
+    async def trailing_agent_expr():
+      workflows.phase("Start")
+      await workflows.agent("Run check", schema={"type": "string"})
+
+    lines = [
+        line.strip()
+        for line in trailing_agent_expr.source.splitlines()
+        if line.strip()
+    ]
+    self.assertEqual(
+        lines,
+        [
+            "phase('Start')",
+            "_ = await agent('Run check', schema={'type': 'string'})",
+        ],
+    )
+
+  def test_validate_rejects_print_calls(self):
+    with self.assertRaisesRegex(
+        workflows.WorkflowError,
+        r"print\(\) is not allowed in workflow scripts; use"
+        r" workflows\.log\(\.\.\.\) to emit output",
+    ):
+
+      @workflows.define
+      def with_print():
+        workflows.phase("Step")
+        print("hello")
+
+      del with_print
+
+    with self.assertRaisesRegex(
+        workflows.WorkflowError,
+        r"print\(\) is not allowed in workflow scripts; use"
+        r" workflows\.log\(\.\.\.\) to emit output",
+    ):
+
+      @workflows.define
+      async def with_nested_print():
+        async def helper(item):
+          print(item)
+          return await workflows.agent(item, schema={"type": "string"})
+
+        await workflows.pipeline(["a"], helper)
+
+      del with_nested_print
+
+    with self.assertRaisesRegex(
+        workflows.WorkflowError,
+        r"print\(\) is not allowed in workflow scripts; use"
+        r" workflows\.log\(\.\.\.\) to emit output",
+    ):
+      workflows.validate_workflow_source("import builtins\nbuiltins.print(1)\n")
 
   def test_validate_rejects_return_and_yield(self):
     with self.assertRaisesRegex(

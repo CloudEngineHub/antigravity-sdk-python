@@ -255,15 +255,42 @@ class _WorkflowQualifierStripper(ast.NodeTransformer):
     return node
 
 
+def _is_print_call(node: ast.AST) -> bool:
+  """Returns whether `node` is a call to the built-in `print` function."""
+  if not isinstance(node, ast.Call):
+    return False
+  func = node.func
+  if isinstance(func, ast.Name) and func.id == "print":
+    return True
+  if (
+      isinstance(func, ast.Attribute)
+      and func.attr == "print"
+      and isinstance(func.value, ast.Name)
+      and func.value.id in ("builtins", "__builtins__")
+  ):
+    return True
+  return False
+
+
 def _check_no_top_level_return_or_yield(nodes: list[ast.stmt]) -> None:
-  """Rejects `return` at the top level of the script and `yield` anywhere."""
+  """Rejects `return` at the top level and `yield` or `print()` anywhere."""
   stack: list[ast.AST] = list(nodes)
   while stack:
     node = stack.pop()
+    if _is_print_call(node):
+      raise WorkflowError(
+          "print() is not allowed in workflow scripts; use"
+          " workflows.log(...) to emit output"
+      )
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
       # `return` is valid inside nested helper functions (such as `async def`
       # stage helpers passed to `pipeline` or `parallel`).
       for sub in ast.walk(node):
+        if _is_print_call(sub):
+          raise WorkflowError(
+              "print() is not allowed in workflow scripts; use"
+              " workflows.log(...) to emit output"
+          )
         if isinstance(sub, (ast.Yield, ast.YieldFrom)):
           raise WorkflowError(
               "return/yield statements are not allowed in workflow scripts; use"
@@ -286,6 +313,8 @@ def validate_workflow_source(source: str) -> None:
   - Top-level `ast.Return` and `ast.Yield` / `ast.YieldFrom`: disallowed at the
     top level of a workflow script (`return` inside nested `def` / `async def`
     stage helpers is permitted).
+  - Calls to `print(...)`: disallowed in workflow scripts (`workflows.log(...)`
+    should be used instead).
   - Top-level `await` compilation (`ast.PyCF_ALLOW_TOP_LEVEL_AWAIT`).
 
   Args:
@@ -293,7 +322,7 @@ def validate_workflow_source(source: str) -> None:
 
   Raises:
     WorkflowError: If the source has a syntax error or uses top-level
-      `return`/`yield`.
+      `return`/`yield` or `print()`.
   """
   try:
     tree = ast.parse(source, "<workflow>")
@@ -392,6 +421,21 @@ def extract_workflow_source(
 
   if not body_nodes:
     raise WorkflowError("workflow function body cannot be empty")
+
+  # Assign a trailing expression statement (such as a final `workflows.phase` or
+  # unassigned `await workflows.agent(...)`) to `_` so the workflow runner does
+  # not treat it as a trailing expression and print its `repr` to stderr.
+  last_stmt = body_nodes[-1]
+  if isinstance(last_stmt, ast.Expr):
+    body_nodes[-1] = ast.copy_location(
+        ast.Assign(
+            targets=[
+                ast.copy_location(ast.Name(id="_", ctx=ast.Store()), last_stmt)
+            ],
+            value=last_stmt.value,
+        ),
+        last_stmt,
+    )
 
   body_module = ast.Module(body=body_nodes, type_ignores=[])
   stripper = _WorkflowQualifierStripper()
