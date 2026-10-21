@@ -181,11 +181,18 @@ message CustomEndpoint {
   string config_json = 2;
 }
 message SystemInstructions {
+  enum SectionHeaderFormat {
+    SECTION_HEADER_FORMAT_UNSPECIFIED = 0;
+    SECTION_HEADER_FORMAT_XML = 1;
+    SECTION_HEADER_FORMAT_NONE = 2;
+  }
   oneof type {
     .antigravity.localharness.CustomSystemInstructions custom = 1;
     .antigravity.localharness.AppendedSystemInstructions appended = 2;
   }
   repeated .antigravity.localharness.TemplateOverride overrides = 3;
+  .antigravity.localharness.SystemInstructions.SectionHeaderFormat
+      section_header_format = 4;
 }
 message TemplateOverride {
   string title = 1;
