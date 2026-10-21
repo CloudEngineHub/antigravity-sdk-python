@@ -330,6 +330,7 @@ message CodeExecutionCallContent {
     enum Language {
       LANGUAGE_UNSPECIFIED = 0;
       PYTHON = 1;
+      BASH = 2;
     }
     .genai.CodeExecutionCallContent.CodeExecutionCallArguments.Language
         language = 1;
