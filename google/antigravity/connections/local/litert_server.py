@@ -14,6 +14,7 @@
 
 """LiteRT OpenAI HTTP Server loopback."""
 
+import contextlib
 import http.server
 import json
 import logging
@@ -31,6 +32,13 @@ except ImportError:
   litert_lm = None  # type: ignore[assignment]
   _LITERT_AVAILABLE = False
 
+# Server attributes that affect `Engine.create_conversation` initialization
+# and must be part of `conversation_cache_key`.
+_CONVERSATION_CACHE_SERVER_ATTRS: tuple[str, ...] = (
+    "max_output_tokens",
+    "thinking_token_budget",
+)
+
 
 class OpenAITool(litert_lm.Tool if _LITERT_AVAILABLE else object):  # type: ignore[misc]
   """Wrapper around LiteRT Tool representing an OpenAPI/Workspace tool."""
@@ -43,6 +51,23 @@ class OpenAITool(litert_lm.Tool if _LITERT_AVAILABLE else object):  # type: igno
 
   def execute(self, param: Any) -> Any:
     raise NotImplementedError("Proxy tools are not executable.")
+
+  def __eq__(self, other: Any) -> bool:
+    """Compares tool schemas by value for conversation cache key matching.
+
+    New `OpenAITool` instances are created on every HTTP request when parsing
+    the JSON `tools` payload. Value-based equality ensures `tools` lists
+    compare equal across consecutive turns in `conversation_cache_key`.
+
+    Args:
+      other: Object to compare against.
+
+    Returns:
+      True if `other` is an `OpenAITool` with an identical tool description.
+    """
+    if not isinstance(other, OpenAITool):
+      return False
+    return self._description == other._description
 
 
 def _is_connection_reset_error(exc: BaseException | None) -> bool:
@@ -62,7 +87,21 @@ def _is_connection_reset_error(exc: BaseException | None) -> bool:
 
 
 class LiteRTOpenAIServer(http.server.ThreadingHTTPServer):
-  """Thread-safe HTTP Server holding references to LiteRT Engine context."""
+  """Thread-safe HTTP Server holding references to LiteRT Engine context.
+
+  Attributes:
+    engine: The LiteRT-LM Engine instance.
+    model_name: The model identifier string.
+    max_output_tokens: Maximum tokens to generate per turn.
+    thinking_token_budget: Thinking token budget or None.
+    engine_lock: Mutex protecting non-thread-safe engine calls.
+    litert_lm_conversation: The active LiteRT-LM `Conversation` cached across
+      turns so its internal KV cache can be reused, or `None`.
+    conversation_cache_key: Tuple `(expected_messages, tools, *server_attrs)`
+      representing the full message history (including the last prompt and
+      assistant response) and config currently held in `litert_lm_conversation`,
+      or `None`.
+  """
 
   def __init__(
       self,
@@ -78,7 +117,20 @@ class LiteRTOpenAIServer(http.server.ThreadingHTTPServer):
     self.max_output_tokens = max_output_tokens
     self.thinking_token_budget = thinking_token_budget
     self.engine_lock = threading.Lock()
+    self.litert_lm_conversation: Any = None
+    self.conversation_cache_key: tuple[Any, ...] | None = None
     super().__init__(server_address, RequestHandlerClass)
+
+  def close_conversation(self) -> None:
+    """Closes and resets the currently cached conversation, if any."""
+    if self.litert_lm_conversation is not None:
+      try:
+        self.litert_lm_conversation.__exit__(None, None, None)
+      except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.exception("Error closing LiteRT conversation: %s", e)
+      finally:
+        self.litert_lm_conversation = None
+    self.conversation_cache_key = None
 
   def handle_error(
       self, request: Any, client_address: tuple[str, int] | str
@@ -121,6 +173,148 @@ def _format_openai_tool_call(
           "arguments": arguments_str,
       },
   }
+
+
+def _build_assistant_message(
+    content: str, tool_calls_payload: Any = None
+) -> Any:
+  """Builds a normalized LiteRT-LM assistant Message from text and tool calls.
+
+  Used both when translating prior assistant messages from an incoming OpenAI
+  request and when recording the newly generated assistant turn into
+  `conversation_cache_key`, ensuring both produce identical `Message` objects.
+
+  Args:
+    content: Assistant text content.
+    tool_calls_payload: Optional list of OpenAI-formatted tool call dicts.
+
+  Returns:
+    A `litert_lm.Message` representing the assistant turn, or `None` if
+    `litert_lm` is unavailable.
+  """
+  if litert_lm is None:
+    return None
+  if not isinstance(tool_calls_payload, list):
+    tool_calls_payload = []
+  litert_tool_calls = []
+  for tc in tool_calls_payload:
+    if isinstance(tc, dict):
+      tc_func = tc.get("function", {})
+      if isinstance(tc_func, dict):
+        args_raw = tc_func.get("arguments", "{}")
+        if isinstance(args_raw, dict):
+          tc_args = args_raw
+        else:
+          try:
+            tc_args = json.loads(args_raw)
+          except (ValueError, TypeError):
+            tc_args = {}
+        litert_tool_calls.append(
+            litert_lm.ToolCall(
+                name=tc_func.get("name", ""),
+                arguments=tc_args,
+            )
+        )
+  content_obj = (
+      litert_lm.Contents.of(content) if content else litert_lm.Contents.empty()
+  )
+  return litert_lm.Message.model(
+      contents=content_obj,
+      tool_calls=litert_tool_calls,
+  )
+
+
+def _make_conversation_cache_key(
+    messages: list[Any],
+    tools: list[Any] | None,
+    server: LiteRTOpenAIServer,
+) -> tuple[Any, ...]:
+  """Constructs the cache key tuple for conversation reuse."""
+  return (
+      messages,
+      tools,
+      *(getattr(server, attr) for attr in _CONVERSATION_CACHE_SERVER_ATTRS),
+  )
+
+
+@contextlib.contextmanager
+def _get_or_create_conversation(
+    server: LiteRTOpenAIServer,
+    context_messages: list[Any],
+    prompt: Any,
+    tools: list[Any] | None,
+    thinking_config: Any,
+) -> Any:
+  """Yields a cached or newly created LiteRT Conversation and a save callback.
+
+  OpenAI `/v1/chat/completions` requests are stateless and resend the full
+  message history on every turn, whereas LiteRT-LM's `Conversation` is stateful.
+  Each request splits the translated messages into `context_messages`
+  (`litert_messages[:-1]`, all prior turns) and `prompt` (`litert_messages[-1]`,
+  the new user or tool turn).
+
+  If `(context_messages, tools, *server_attrs)` matches
+  `server.conversation_cache_key` saved at the end of the previous turn
+  (`[*prev_context_messages, prev_prompt, prev_assistant_msg]`), the existing
+  `Conversation` and its KV cache are reused and only `prompt` is sent.
+  Otherwise, the old conversation is closed and a new one is created with
+  `context_messages`.
+  """
+  cache_key = _make_conversation_cache_key(context_messages, tools, server)
+  if (
+      server.litert_lm_conversation is not None
+      and server.conversation_cache_key == cache_key
+  ):
+    logging.info(
+        "LiteRT conversation cache hit: reusing conversation with %d context"
+        " messages",
+        len(context_messages),
+    )
+    conv = server.litert_lm_conversation
+  else:
+    logging.info(
+        "LiteRT conversation cache miss: creating new conversation with %d"
+        " context messages",
+        len(context_messages),
+    )
+    server.close_conversation()
+    constrained_decoding_config = (
+        litert_lm.ConstrainedDecodingConfig() if litert_lm is not None else None
+    )
+    conv = server.engine.create_conversation(
+        messages=context_messages,
+        tools=tools,
+        automatic_tool_calling=False,
+        max_output_tokens=server.max_output_tokens,
+        thinking_config=thinking_config,
+        constrained_decoding_config=constrained_decoding_config,
+    ).__enter__()
+    server.litert_lm_conversation = conv
+
+  saved_assistant: list[Any] = [None]
+
+  def save_assistant(assistant_msg: Any) -> None:
+    saved_assistant[0] = assistant_msg
+
+  try:
+    yield conv, save_assistant
+  except Exception:
+    if hasattr(conv, "cancel_process"):
+      try:
+        conv.cancel_process()
+      except Exception:  # pylint: disable=broad-exception-caught
+        pass
+    server.close_conversation()
+    raise
+  else:
+    if saved_assistant[0] is not None:
+      server.conversation_cache_key = _make_conversation_cache_key(
+          [*context_messages, prompt, saved_assistant[0]],
+          tools,
+          server,
+      )
+    else:
+      server.close_conversation()
 
 
 class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
@@ -198,6 +392,7 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
 
     try:
       litert_messages = []
+      pending_tool_responses: list[Any] = []
       for idx, m in enumerate(messages):
         if not isinstance(m, dict):
           self.send_error(400, "Corrupted history frame")
@@ -210,37 +405,8 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
           litert_messages.append(litert_lm.Message.user(content))
         elif role in ("assistant", "model"):
           tool_calls_payload = m.get("tool_calls", [])
-          if not isinstance(tool_calls_payload, list):
-            tool_calls_payload = []
-          litert_tool_calls = []
-          for tc in tool_calls_payload:
-            if isinstance(tc, dict):
-              tc_func = tc.get("function", {})
-              if isinstance(tc_func, dict):
-                args_raw = tc_func.get("arguments", "{}")
-                if isinstance(args_raw, dict):
-                  tc_args = args_raw
-                else:
-                  try:
-                    tc_args = json.loads(args_raw)
-                  except (ValueError, TypeError):
-                    tc_args = {}
-                litert_tool_calls.append(
-                    litert_lm.ToolCall(
-                        name=tc_func.get("name", ""),
-                        arguments=tc_args,
-                    )
-                )
-          content_obj = (
-              litert_lm.Contents.of(content)
-              if content
-              else litert_lm.Contents.empty()
-          )
           litert_messages.append(
-              litert_lm.Message.model(
-                  contents=content_obj,
-                  tool_calls=litert_tool_calls,
-              )
+              _build_assistant_message(content, tool_calls_payload)
           )
         elif role == "tool":
           name = m.get("name")
@@ -259,15 +425,21 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
                   break
           if not name:
             name = "dummy_tool"
-          # Correct tool responses require ToolResponse content wrapper
-          tool_resp = litert_lm.Content.ToolResponse(
-              name=name, response=content
+          # Merge consecutive `role == "tool"` messages into a single
+          # `Message.tool` turn so parallel tool calls in a single assistant
+          # turn match the cached LiteRT conversation history.
+          pending_tool_responses.append(
+              litert_lm.Content.ToolResponse(name=name, response=content)
           )
-          litert_messages.append(
-              litert_lm.Message.tool(litert_lm.Contents.of(tool_resp))
-          )
-    # pylint: disable=broad-exception-caught
-    except Exception as e:  # pylint: disable=broad-exception-caught  # pylint: disable=broad-exception-caught
+          next_msg = messages[idx + 1] if idx + 1 < len(messages) else None
+          if not isinstance(next_msg, dict) or next_msg.get("role") != "tool":
+            litert_messages.append(
+                litert_lm.Message.tool(
+                    litert_lm.Contents.of(pending_tool_responses)
+                )
+            )
+            pending_tool_responses = []
+    except Exception as e:  # pylint: disable=broad-exception-caught
       self.send_error(400, f"Failed to translate messages: {e}")
       return
 
@@ -296,30 +468,36 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
     # Thread-safe serialization for non-thread-safe C++ engine model inferences
     with server.engine_lock:
       try:
-        with server.engine.create_conversation(
-            messages=context_messages,
+        with _get_or_create_conversation(
+            server=server,
+            context_messages=context_messages,
+            prompt=prompt,
             tools=litert_tools or None,
-            automatic_tool_calling=False,
-            max_output_tokens=server.max_output_tokens,
             thinking_config=thinking_config,
-            constrained_decoding_config=litert_lm.ConstrainedDecodingConfig(),
-        ) as conv:
+        ) as (conv, save_assistant):
           if stream:
-            self._stream_response(conv, prompt, server.model_name)
+            assistant_msg = self._stream_response(
+                conv, prompt, server.model_name
+            )
           else:
-            self._handle_synchronous(conv, prompt, server.model_name)
-      except ConnectionError:
-        logging.warning("Client disconnected early during completions stream.")
-      # pylint: disable=broad-exception-caught
-      except Exception as e:  # pylint: disable=broad-exception-caught  # pylint: disable=broad-exception-caught
-        logging.exception("Error occurred during LiteRT inference execution")
-        try:
-          self.send_error(500, f"Inference Engine error: {e}")
-        # pylint: disable=broad-exception-caught
-        except Exception:
-          pass
+            assistant_msg = self._handle_synchronous(
+                conv, prompt, server.model_name
+            )
+          save_assistant(assistant_msg)
+      except Exception as e:  # pylint: disable=broad-exception-caught
+        self.close_connection = True
+        if _is_connection_reset_error(e) or isinstance(e, ConnectionError):
+          logging.warning(
+              "Client disconnected early during completions stream."
+          )
+        else:
+          logging.exception("Error occurred during LiteRT inference execution")
+          try:
+            self.send_error(500, f"Inference Engine error: {e}")
+          except Exception:  # pylint: disable=broad-exception-caught
+            pass
 
-  def _stream_response(self, conv: Any, prompt: Any, model_name: str) -> None:
+  def _stream_response(self, conv: Any, prompt: Any, model_name: str) -> Any:
     """Streams completions delta chunks to client using Server-Sent Events (SSE)."""
     self.send_response(200)
     self.send_header("Content-Type", "text/event-stream")
@@ -346,6 +524,8 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
     self.wfile.flush()
 
     finish_reason = "stop"
+    text_parts: list[str] = []
+    all_tool_calls: list[dict[str, Any]] = []
     # Yield content delta stream
     for chunk in conv.send_message_async(prompt):
       text_output = ""
@@ -357,6 +537,9 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
             if isinstance(item, dict) and item.get("type") == "text"
         )
         tool_calls = chunk.get("tool_calls", [])
+
+      if text_output:
+        text_parts.append(text_output)
 
       if text_output or tool_calls:
         delta = {}
@@ -371,6 +554,7 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
               }
               for i, tc in enumerate(tool_calls)
           ]
+          all_tool_calls.extend(delta["tool_calls"])
           finish_reason = "tool_calls"
 
         delta_chunk = {
@@ -402,10 +586,9 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
     self.wfile.write(f"data: {json.dumps(final_chunk)}\n\n".encode("utf-8"))
     self.wfile.write(b"data: [DONE]\n\n")
     self.wfile.flush()
+    return _build_assistant_message("".join(text_parts), all_tool_calls)
 
-  def _handle_synchronous(
-      self, conv: Any, prompt: Any, model_name: str
-  ) -> None:
+  def _handle_synchronous(self, conv: Any, prompt: Any, model_name: str) -> Any:
     """Handles synchronous completions and returns raw JSON payload response."""
     response = conv.send_message(prompt)
     text_output = ""
@@ -450,3 +633,4 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
     self.send_header("Content-Type", "application/json")
     self.end_headers()
     self.wfile.write(json.dumps(resp_body).encode("utf-8"))
+    return _build_assistant_message(text_output, openai_tool_calls)

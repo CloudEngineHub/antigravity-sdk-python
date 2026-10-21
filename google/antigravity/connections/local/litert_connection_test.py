@@ -31,6 +31,7 @@ class MockEngine:
   def __init__(self, model_path, **kwargs):
     self.model_path = model_path
     self.kwargs = kwargs
+    self.conversations = []
 
   def __enter__(self):
     return self
@@ -39,7 +40,9 @@ class MockEngine:
     pass
 
   def create_conversation(self, messages=None, tools=None, **kwargs):
-    return MockConversation(messages, tools, **kwargs)
+    conv = MockConversation(messages, tools, **kwargs)
+    self.conversations.append(conv)
+    return conv
 
 
 class MockConversation:
@@ -50,21 +53,29 @@ class MockConversation:
     self.kwargs = kwargs
     self.simulated_response = None
     self.simulated_async_response = None
+    self.exited = False
+    self.cancelled = False
+    self.sent_prompts = []
 
   def __enter__(self):
     return self
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    pass
+    self.exited = True
+
+  def cancel_process(self):
+    self.cancelled = True
 
   # pylint: disable=unused-argument
   def send_message(self, prompt):
+    self.sent_prompts.append(prompt)
     if self.simulated_response is not None:
       return self.simulated_response
     return {"content": [{"type": "text", "text": "Mocked sync reply."}]}
 
   # pylint: disable=unused-argument
   def send_message_async(self, prompt):
+    self.sent_prompts.append(prompt)
     if self.simulated_async_response is not None:
       for chunk in self.simulated_async_response:
         yield chunk
@@ -83,6 +94,9 @@ class MockText:
   def to_json(self):
     return {"type": "text", "text": self.text}
 
+  def __eq__(self, other):
+    return isinstance(other, MockText) and self.text == other.text
+
 
 class MockToolResponse:
 
@@ -97,6 +111,13 @@ class MockToolResponse:
         "response": self.response,
     }
 
+  def __eq__(self, other):
+    return (
+        isinstance(other, MockToolResponse)
+        and self.name == other.name
+        and self.response == other.response
+    )
+
 
 class MockContents:
 
@@ -107,14 +128,29 @@ class MockContents:
   def of(cls, *args):
     if not args:
       return cls([])
-    arg = args[0]
-    if isinstance(arg, str):
-      return cls([MockText(arg)])
-    return cls([arg])
+    if len(args) == 1:
+      arg = args[0]
+      if isinstance(arg, str):
+        return cls([MockText(arg)])
+      if isinstance(arg, list):
+        return cls(list(arg))
+      return cls([arg])
+    items = []
+    for arg in args:
+      if isinstance(arg, str):
+        items.append(MockText(arg))
+      elif isinstance(arg, list):
+        items.extend(arg)
+      else:
+        items.append(arg)
+    return cls(items)
 
   @classmethod
   def empty(cls):
     return cls([])
+
+  def __eq__(self, other):
+    return isinstance(other, MockContents) and self.contents == other.contents
 
 
 class MockToolCall:
@@ -131,6 +167,13 @@ class MockToolCall:
             "arguments": self.arguments,
         },
     }
+
+  def __eq__(self, other):
+    return (
+        isinstance(other, MockToolCall)
+        and self.name == other.name
+        and self.arguments == other.arguments
+    )
 
 
 class MockTool:
@@ -1286,6 +1329,743 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     h_cfg = strategy._build_harness_config()
     tool_names = [t.name for t in h_cfg.tools]
     self.assertIn("custom_lookup", tool_names)
+
+  def test_openai_tool_equality(self):
+    """Verify OpenAITool value equality comparisons."""
+    desc1 = {
+        "type": "function",
+        "function": {"name": "test_tool", "description": "A tool"},
+    }
+    desc2 = {
+        "type": "function",
+        "function": {"name": "test_tool", "description": "A tool"},
+    }
+    desc3 = {
+        "type": "function",
+        "function": {"name": "other_tool", "description": "Another tool"},
+    }
+    tool1 = litert_server.OpenAITool(desc1)
+    tool2 = litert_server.OpenAITool(desc2)
+    tool3 = litert_server.OpenAITool(desc3)
+
+    self.assertEqual(tool1, tool2)
+    self.assertNotEqual(tool1, tool3)
+    self.assertNotEqual(tool1, desc1)
+    self.assertNotEqual(tool1, MockTool())
+    self.assertNotEqual(tool1, None)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_conversation_caching_multi_turn_sync(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify active conversation is reused across matching synchronous multi-turn requests."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    # Initial state after warmup (warmup creates conversation 0)
+    engine = strategy._engine
+    warmup_conv_count = len(engine.conversations)
+
+    # Turn 1: user query
+    t1_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Turn 1 question"}],
+        "stream": False,
+    }
+    req1 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t1_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req1) as r:
+      self.assertEqual(r.status, 200)
+      data1 = json.loads(r.read().decode("utf-8"))
+      self.assertEqual(
+          data1["choices"][0]["message"]["content"], "Mocked sync reply."
+      )
+
+    # Turn 1 should have initialized a new conversation (cache miss from warmup)
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    turn1_conv = engine.conversations[-1]
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 1)
+
+    # Turn 2: user includes history from Turn 1
+    t2_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            {"role": "user", "content": "Turn 1 question"},
+            {"role": "assistant", "content": "Mocked sync reply."},
+            {"role": "user", "content": "Turn 2 question"},
+        ],
+        "stream": False,
+    }
+    req2 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t2_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req2) as r:
+      self.assertEqual(r.status, 200)
+      data2 = json.loads(r.read().decode("utf-8"))
+      self.assertEqual(
+          data2["choices"][0]["message"]["content"], "Mocked sync reply."
+      )
+
+    # Turn 2 should REUSE turn1_conv: no new conversation created, not exited
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 2)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_conversation_caching_multi_turn_stream(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify active conversation is reused across streaming multi-turn requests."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    engine = strategy._engine
+    warmup_conv_count = len(engine.conversations)
+
+    def _read_sse_stream(r):
+      while True:
+        line = r.readline().decode("utf-8")
+        if not line or "[DONE]" in line:
+          break
+
+    # Turn 1: stream
+    t1_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Stream question 1"}],
+        "stream": True,
+    }
+    req1 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t1_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req1) as r:
+      self.assertEqual(r.status, 200)
+      _read_sse_stream(r)
+
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    turn1_conv = engine.conversations[-1]
+    self.assertFalse(turn1_conv.exited)
+
+    # Turn 2: stream with history
+    t2_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            {"role": "user", "content": "Stream question 1"},
+            {"role": "assistant", "content": "Mocked async reply."},
+            {"role": "user", "content": "Stream question 2"},
+        ],
+        "stream": True,
+    }
+    req2 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t2_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req2) as r:
+      self.assertEqual(r.status, 200)
+      _read_sse_stream(r)
+
+    # Reused conversation
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 2)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_conversation_cache_miss_on_diverging_messages(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify cache miss closes previous conversation and creates a new one."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    engine = strategy._engine
+    warmup_conv_count = len(engine.conversations)
+
+    # Turn 1
+    t1_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Initial conversation"}],
+        "stream": False,
+    }
+    req1 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t1_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req1) as r:
+      r.read()
+
+    turn1_conv = engine.conversations[-1]
+    self.assertFalse(turn1_conv.exited)
+
+    # Turn 2 with completely different messages (divergent history)
+    t2_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Completely new topic"}],
+        "stream": False,
+    }
+    req2 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t2_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req2) as r:
+      r.read()
+
+    # Previous conversation must be closed, and a new one opened
+    self.assertTrue(turn1_conv.exited)
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 2)
+    turn2_conv = engine.conversations[-1]
+    self.assertFalse(turn2_conv.exited)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_conversation_cache_miss_on_tools_change(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify tool configuration change triggers conversation cache invalidation."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    tool_a = {
+        "type": "function",
+        "function": {"name": "tool_a", "description": "Tool A"},
+    }
+    tool_b = {
+        "type": "function",
+        "function": {"name": "tool_b", "description": "Tool B"},
+    }
+
+    # Turn 1 with tool_a
+    t1_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Run tool"}],
+        "tools": [tool_a],
+        "stream": False,
+    }
+    req1 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t1_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req1) as r:
+      r.read()
+
+    turn1_conv = strategy._engine.conversations[-1]
+    self.assertFalse(turn1_conv.exited)
+
+    # Turn 2 with same tools: [tool_a] and matching history
+    t2_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            {"role": "user", "content": "Run tool"},
+            {"role": "assistant", "content": "Mocked sync reply."},
+            {"role": "user", "content": "Run tool again"},
+        ],
+        "tools": [tool_a],
+        "stream": False,
+    }
+    req2 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t2_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req2) as r:
+      r.read()
+
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 2)
+
+    # Turn 3 with tool_b added -> cache miss invalidates turn1_conv
+    t3_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            {"role": "user", "content": "Run tool"},
+            {"role": "assistant", "content": "Mocked sync reply."},
+            {"role": "user", "content": "Run tool again"},
+            {"role": "assistant", "content": "Mocked sync reply."},
+            {"role": "user", "content": "Run another tool"},
+        ],
+        "tools": [tool_a, tool_b],
+        "stream": False,
+    }
+    req3 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t3_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req3) as r:
+      r.read()
+
+    # Tools changed -> turn1_conv closed, new conv created
+    self.assertTrue(turn1_conv.exited)
+    turn3_conv = strategy._engine.conversations[-1]
+    self.assertNotEqual(turn3_conv, turn1_conv)
+    self.assertFalse(turn3_conv.exited)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_consecutive_tool_responses_merged_and_cached(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify consecutive tool responses are merged into a single tool message and reuse cache."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    engine = strategy._engine
+    warmup_conv_count = len(engine.conversations)
+
+    # Setup Turn 1 simulated response with 2 tool calls
+    tool_calls_data = [
+        {"function": {"name": "get_weather", "arguments": {"city": "Paris"}}},
+        {"function": {"name": "get_time", "arguments": {"city": "Paris"}}},
+    ]
+    t1_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Weather and time"}],
+        "stream": False,
+    }
+    req1 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t1_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+
+    def _inject_tool_calls(messages=None, tools=None, **kwargs):
+      conv = MockConversation(messages, tools, **kwargs)
+      conv.simulated_response = {
+          "content": [],
+          "tool_calls": tool_calls_data,
+      }
+      engine.conversations.append(conv)
+      return conv
+
+    with mock.patch.object(
+        engine, "create_conversation", side_effect=_inject_tool_calls
+    ):
+      with _urlopen_no_proxy(req1) as r:
+        self.assertEqual(r.status, 200)
+        data1 = json.loads(r.read().decode("utf-8"))
+        tc_resp = data1["choices"][0]["message"]["tool_calls"]
+        self.assertEqual(len(tc_resp), 2)
+        call_id_1 = tc_resp[0]["id"]
+        call_id_2 = tc_resp[1]["id"]
+
+    turn1_conv = engine.conversations[-1]
+    self.assertFalse(turn1_conv.exited)
+    # Set simulated response for Turn 2
+    turn1_conv.simulated_response = {
+        "content": [{"type": "text", "text": "Mocked sync reply."}],
+        "tool_calls": [],
+    }
+
+    # Turn 2: Echo assistant message with tool calls, followed by 2
+    # consecutive tool responses.
+    t2_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            {"role": "user", "content": "Weather and time"},
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": call_id_1,
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"city": "Paris"}',
+                        },
+                    },
+                    {
+                        "id": call_id_2,
+                        "type": "function",
+                        "function": {
+                            "name": "get_time",
+                            "arguments": '{"city": "Paris"}',
+                        },
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": call_id_1,
+                "content": "Sunny, 20C",
+            },
+            {
+                "role": "tool",
+                "tool_call_id": call_id_2,
+                "content": "14:00",
+            },
+        ],
+        "stream": False,
+    }
+    req2 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t2_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req2) as r:
+      self.assertEqual(r.status, 200)
+      data2 = json.loads(r.read().decode("utf-8"))
+      self.assertEqual(
+          data2["choices"][0]["message"]["content"], "Mocked sync reply."
+      )
+
+    # Turn 2 must reuse turn1_conv
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 2)
+
+    # Verify merged tool response prompt
+    merged_prompt = turn1_conv.sent_prompts[-1]
+    self.assertEqual(merged_prompt["role"], "tool")
+    contents = merged_prompt["content"].contents
+    self.assertEqual(len(contents), 2)
+    self.assertEqual(contents[0].name, "get_weather")
+    self.assertEqual(contents[0].response, "Sunny, 20C")
+    self.assertEqual(contents[1].name, "get_time")
+    self.assertEqual(contents[1].response, "14:00")
+
+    # Turn 3: Follow-up user turn reusing the conversation after tool execution.
+    t3_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            *t2_payload["messages"],
+            {"role": "assistant", "content": "Mocked sync reply."},
+            {"role": "user", "content": "Thanks!"},
+        ],
+        "stream": False,
+    }
+    req3 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t3_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req3) as r:
+      self.assertEqual(r.status, 200)
+      data3 = json.loads(r.read().decode("utf-8"))
+      self.assertEqual(
+          data3["choices"][0]["message"]["content"], "Mocked sync reply."
+      )
+
+    # Turn 3 must also reuse turn1_conv
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 3)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_conversation_caching_multi_turn_stream_with_tool_calls(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify multi-turn streaming tool call response reuses cached conversation."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    engine = strategy._engine
+    warmup_conv_count = len(engine.conversations)
+
+    tool_calls_data = [
+        {"function": {"name": "get_weather", "arguments": {"city": "Paris"}}},
+    ]
+
+    def _inject_tool_calls(messages=None, tools=None, **kwargs):
+      conv = MockConversation(messages, tools, **kwargs)
+      conv.simulated_async_response = [
+          {"content": [], "tool_calls": tool_calls_data}
+      ]
+      engine.conversations.append(conv)
+      return conv
+
+    # Turn 1: Stream tool call
+    t1_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "What is the weather?"}],
+        "stream": True,
+    }
+    req1 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t1_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    tool_call_id = None
+    with mock.patch.object(
+        engine, "create_conversation", side_effect=_inject_tool_calls
+    ):
+      with _urlopen_no_proxy(req1) as r:
+        self.assertEqual(r.status, 200)
+        while True:
+          line = r.readline().decode("utf-8")
+          if not line or "[DONE]" in line:
+            break
+          if line.startswith("data: "):
+            chunk_data = json.loads(line[6:].strip())
+            choices = chunk_data.get("choices", [])
+            if choices:
+              delta = choices[0].get("delta", {})
+              if "tool_calls" in delta and delta["tool_calls"]:
+                tool_call_id = delta["tool_calls"][0]["id"]
+
+    self.assertIsNotNone(tool_call_id)
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    turn1_conv = engine.conversations[-1]
+    self.assertFalse(turn1_conv.exited)
+
+    # Reset simulated async response to default text streaming
+    turn1_conv.simulated_async_response = None
+
+    # Turn 2: Echo assistant tool call + tool response, stream text reply
+    t2_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            {"role": "user", "content": "What is the weather?"},
+            {
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": '{"city": "Paris"}',
+                    },
+                }],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": "Sunny, 20C",
+            },
+        ],
+        "stream": True,
+    }
+    req2 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t2_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req2) as r:
+      self.assertEqual(r.status, 200)
+      while True:
+        line = r.readline().decode("utf-8")
+        if not line or "[DONE]" in line:
+          break
+
+    # Turn 2 must reuse turn1_conv
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 2)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_client_disconnect_cancels_and_closes_cached_conversation(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify client disconnect or stream error cancels and resets cached conversation."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    server = strategy._openai_server
+
+    def _failing_stream(_):
+      yield {"content": [{"type": "text", "text": "Part 1"}]}
+      raise BrokenPipeError("Simulated client disconnect")
+
+    engine = strategy._engine
+
+    def _create_err_conv(messages=None, tools=None, **kwargs):
+      conv = MockConversation(messages, tools, **kwargs)
+      conv.send_message_async = _failing_stream
+      engine.conversations.append(conv)
+      return conv
+
+    with mock.patch.object(
+        engine, "create_conversation", side_effect=_create_err_conv
+    ):
+      t_payload = {
+          "model": "model.litertlm",
+          "messages": [{"role": "user", "content": "Abort stream"}],
+          "stream": True,
+      }
+      req = urllib.request.Request(
+          f"{strategy._openai_server_url}/v1/chat/completions",
+          data=json.dumps(t_payload).encode("utf-8"),
+          headers={"Content-Type": "application/json"},
+      )
+      with _urlopen_no_proxy(req) as r:
+        self.assertEqual(r.status, 200)
+        # Consume stream until connection aborts on server side
+        while r.readline():
+          pass
+
+    failed_conv = engine.conversations[-1]
+    self.assertTrue(failed_conv.cancelled)
+    self.assertTrue(failed_conv.exited)
+    self.assertIsNone(server.litert_lm_conversation)
+    self.assertIsNone(server.conversation_cache_key)
+
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_strategy_shutdown_closes_cached_conversation(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify shutting down strategy closes cached conversation under lock."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+
+    # Execute a turn to ensure conversation is cached
+    t_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Hello before shutdown"}],
+        "stream": False,
+    }
+    req = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req) as r:
+      r.read()
+
+    server = strategy._openai_server
+    self.assertIsNotNone(server.litert_lm_conversation)
+    cached_conv = server.litert_lm_conversation
+    self.assertFalse(cached_conv.exited)
+
+    # Exit strategy
+    await strategy.__aexit__(None, None, None)
+
+    # Conversation must be closed, server cleared
+    self.assertTrue(cached_conv.exited)
+    self.assertIsNone(strategy._openai_server)
 
 
 class DeriveLiteRTCompactionConfigTest(unittest.TestCase):

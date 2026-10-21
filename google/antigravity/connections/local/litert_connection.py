@@ -374,10 +374,11 @@ class LiteRTConnectionStrategy(
         if self._openai_server_thread is not None:
           self._openai_server_thread.join()
           self._openai_server_thread = None
-      # pylint: disable=broad-exception-caught
       except Exception as e:  # pylint: disable=broad-exception-caught
         logging.exception("Error during loopback API server shutdown: %s", e)
       finally:
+        with self._openai_server.engine_lock:
+          self._openai_server.close_conversation()
         self._openai_server = None
 
   def _close_engine(self) -> None:
@@ -442,8 +443,7 @@ def _check_gpu_acceleration_available() -> bool:
       ).strip()
       if out == b"1":
         return True
-    # pylint: disable=broad-exception-caught
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
       pass
   elif sys.platform.startswith("linux") or sys.platform == "win32":
     if shutil.which("nvidia-smi") is not None:
@@ -453,8 +453,7 @@ def _check_gpu_acceleration_available() -> bool:
 
         subprocess.check_output(["nvidia-smi"], stderr=subprocess.DEVNULL)
         return True
-      # pylint: disable=broad-exception-caught
-      except Exception:
+      except Exception:  # pylint: disable=broad-exception-caught
         pass
 
     # Soft check for loaded graphics drivers DLLs
@@ -472,7 +471,6 @@ def _check_gpu_acceleration_available() -> bool:
         except Exception:  # pylint: disable=broad-exception-caught
           ctypes.CDLL("libcuda.so.1")
           return True
-    # pylint: disable=broad-exception-caught
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
       pass
   return False
