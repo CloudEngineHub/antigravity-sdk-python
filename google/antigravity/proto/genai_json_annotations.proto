@@ -66,15 +66,19 @@ enum JsonType {
 }
 
 extend google.protobuf.FieldOptions {
-  // Used in explicit union mode. Specifies the JSON key that acts as the
-  // discriminator to determine which field of a `oneof` should be populated.
-  // If not set, implicit mode is used (using the `oneof` name as key).
+  // Used in explicit union mode or on a message field reference. Specifies the
+  // JSON key that acts as the discriminator to determine which field of a
+  // `oneof` should be populated, or to inject/validate a fixed discriminator on
+  // a referenced message field when paired with `json_discriminator_value`.
+  // If not set on a `oneof` field, implicit mode is used (using the `oneof`
+  // name as key).
   //
   // See (internal link) for details and examples.
   string json_discriminator = 525000215;
 
   // Specifies the value that the discriminator key must have in the JSON
-  // payload to map to this specific field.
+  // payload to map to this specific field, or to be injected/validated on a
+  // referenced message field when paired with `json_discriminator`.
   //
   // See (internal link) for details and examples.
   //
