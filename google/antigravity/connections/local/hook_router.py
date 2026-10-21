@@ -22,9 +22,8 @@ from google.antigravity.proto import localharness_pb2
 from google.antigravity import types
 from google.antigravity.connections import struct_converter
 from google.antigravity.connections.local.local_connection_config import make_step_id
-from google.antigravity.connections.local.local_connection_config import normalize_wire_path
+from google.antigravity.connections.local.local_connection_config import normalize_path_arguments
 from google.antigravity.connections.local.local_connection_config import PROTO_FIELD_TO_SDK_NAME
-from google.antigravity.connections.local.local_connection_config import WIRE_PATH_ARGUMENT_KEYS
 from google.antigravity.connections.local.proto_converters import _parse_stop_reason
 from google.antigravity.hooks import hook_runner as hook_runner_lib
 from google.antigravity.hooks import hooks
@@ -61,19 +60,6 @@ def _from_proto_user_input(ui: localharness_pb2.UserInput) -> types.Content:
   if len(content_list) == 1:
     return content_list[0]
   return content_list
-
-
-def _normalize_path_args(args: dict[str, Any]) -> None:
-  """Converts wire-format URIs to clean filesystem paths in-place.
-
-  Paths arrive as file:/// or cns:// URIs over the wire protocol.
-  User hooks expect clean absolute paths (e.g. /home/user/file.py),
-  so we normalize known path fields before dispatch.
-  """
-  for key in WIRE_PATH_ARGUMENT_KEYS:
-    val = args.get(key)
-    if isinstance(val, str) and val:
-      args[key] = normalize_wire_path(val)
 
 
 class HookRouter:
@@ -188,6 +174,7 @@ class HookRouter:
     server_name: str | None = None
     call_id: str | None = None
     step_id: str | None = None
+    canonical_path: str | None = None
     if req.HasField("pre_tool_args"):
       pta = req.pre_tool_args
       tool_name = PROTO_FIELD_TO_SDK_NAME.get(pta.tool_name, pta.tool_name)
@@ -201,16 +188,7 @@ class HookRouter:
         call_id = pta.call_id
       if pta.trajectory_id or pta.HasField("step_index"):
         step_id = make_step_id(pta.trajectory_id, pta.step_index)
-      _normalize_path_args(args)
-
-    # Derive canonical_path from the first normalized path field so that
-    # workspace_only() policies can enforce path restrictions.
-    canonical_path: str | None = None
-    for key in WIRE_PATH_ARGUMENT_KEYS:
-      val = args.get(key)
-      if isinstance(val, str) and val:
-        canonical_path = val
-        break
+      canonical_path = normalize_path_arguments(args)
 
     tc = types.ToolCall(
         name=tool_name,

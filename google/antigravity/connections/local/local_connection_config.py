@@ -61,7 +61,9 @@ PROTO_FIELD_TO_SDK_NAME: dict[str, str] = {
 
 # Argument keys in tool call JSON payloads that carry wire-format URIs
 # (file:///..., cns://...) and must be normalized to clean filesystem paths.
-WIRE_PATH_ARGUMENT_KEYS: frozenset[str] = frozenset({
+# Stored as a tuple with fixed priority order so canonical path resolution is
+# deterministic.
+WIRE_PATH_ARGUMENT_KEYS: tuple[str, ...] = (
     "path",
     "file_path",
     "directory_path",
@@ -69,12 +71,36 @@ WIRE_PATH_ARGUMENT_KEYS: frozenset[str] = frozenset({
     "output_path",
     "script_path",
     "ScriptPath",
-})
+)
 
 normalize_wire_path = connection.normalize_wire_path
 normalize_workspace_path = connection.normalize_workspace_path
 normalize_workspace_paths = connection.normalize_workspace_paths
 make_step_id = connection.make_step_id
+
+
+def normalize_path_arguments(args: dict[str, Any]) -> str | None:
+  """Normalizes wire-format URIs to clean filesystem paths in-place.
+
+  Paths arrive as file:/// or cns:// URIs over the wire protocol. User hooks and
+  policy checks expect clean absolute paths, so we normalize known path fields
+  before dispatch.
+
+  Args:
+    args: The tool call arguments dictionary to normalize in-place.
+
+  Returns:
+    The canonical path (the first normalized path field found), or None.
+  """
+  canonical_path: str | None = None
+  for key in WIRE_PATH_ARGUMENT_KEYS:
+    val = args.get(key)
+    if isinstance(val, str) and val:
+      normalized = normalize_wire_path(val)
+      args[key] = normalized
+      if canonical_path is None:
+        canonical_path = normalized
+  return canonical_path
 
 
 class BaseLocalAgentConfig(connection.AgentConfig):

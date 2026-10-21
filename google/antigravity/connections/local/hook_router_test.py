@@ -21,6 +21,7 @@ from absl.testing import absltest
 from google.antigravity.proto import localharness_pb2
 from google.antigravity import types
 from google.antigravity.connections.local import event_processor
+from google.antigravity.connections.local import local_connection_config
 from google.antigravity.connections.local import types as local_types
 from google.antigravity.connections.local.hook_router import HookRouter
 from google.antigravity.connections.local.hook_router import make_step_id
@@ -1183,6 +1184,9 @@ class HookRouterPreToolTest(absltest.TestCase):
       self.assertEqual(
           captured_tool_calls[0].args["file_path"], "/home/user/foo.py"
       )
+      self.assertEqual(
+          captured_tool_calls[0].canonical_path, "/home/user/foo.py"
+      )
 
       req2 = localharness_pb2.CallHookRequest(
           request_id="test_target_file_norm",
@@ -1200,8 +1204,55 @@ class HookRouterPreToolTest(absltest.TestCase):
       self.assertEqual(
           captured_tool_calls[1].args["TargetFile"], "/home/user/bar.py"
       )
+      self.assertEqual(
+          captured_tool_calls[1].canonical_path, "/home/user/bar.py"
+      )
 
     asyncio.run(_test())
+
+  def test_normalize_path_arguments(self):
+    """Verifies normalize_path_arguments behavior and canonical_path resolution."""
+    # 1. Normalizes file:// and cns:// paths in-place, returning canonical_path.
+    args = {
+        "file_path": "file:///workspace/src/main.py",
+        "command": "build",
+    }
+    canonical = local_connection_config.normalize_path_arguments(args)
+    self.assertEqual(canonical, "/workspace/src/main.py")
+    self.assertEqual(args["file_path"], "/workspace/src/main.py")
+    self.assertEqual(args["command"], "build")
+
+    # 2. CNS URI conversion.
+    cns_args = {"path": "cns://el-d/home/user/data.txt"}
+    self.assertEqual(
+        local_connection_config.normalize_path_arguments(cns_args),
+        "/cns/el-d/home/user/data.txt",
+    )
+    self.assertEqual(cns_args["path"], "/cns/el-d/home/user/data.txt")
+
+    # 3. Deterministic precedence when multiple path keys are present.
+    multi_args = {
+        "output_path": "file:///tmp/output.png",
+        "path": "file:///workspace/doc.md",
+    }
+    self.assertEqual(
+        local_connection_config.normalize_path_arguments(multi_args),
+        "/workspace/doc.md",
+    )
+    self.assertEqual(multi_args["path"], "/workspace/doc.md")
+    self.assertEqual(multi_args["output_path"], "/tmp/output.png")
+
+    # 4. Returns None when no path arguments are present.
+    no_path_args = {"query": "search query", "limit": 10}
+    self.assertIsNone(
+        local_connection_config.normalize_path_arguments(no_path_args)
+    )
+
+    # 5. Empty or non-string path arguments are ignored.
+    empty_args = {"path": "", "file_path": None, "directory_path": 123}
+    self.assertIsNone(
+        local_connection_config.normalize_path_arguments(empty_args)
+    )
 
   def test_handle_pre_tool_mcp_server_name(self):
     """Verifies server_name flows from PreToolArgs for MCP tool calls."""
