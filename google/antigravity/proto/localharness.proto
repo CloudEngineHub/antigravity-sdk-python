@@ -274,6 +274,7 @@ message SubagentsConfig {
   bool enabled = 1;
   int32 max_nesting_depth = 2 [default = 1];
   repeated string allowed_subagents = 3;
+  bool disable_define_subagent_tool = 4;
 }
 message UserQuestionsConfig {
   bool enabled = 1;
