@@ -143,9 +143,9 @@ Line 2"""
     def one_liner():
       phase("SingleLine")  # pylint: disable=multiple-statements
 
-    self.assertEqual(one_liner.source.strip(), "_ = phase('SingleLine')")
+    self.assertEqual(one_liner.source.strip(), "phase('SingleLine')")
 
-  def test_define_rewrites_trailing_expression_to_assignment(self):
+  def test_define_preserves_trailing_expression_statements(self):
     @workflows.define
     async def trailing_agent_expr():
       workflows.phase("Start")
@@ -160,7 +160,7 @@ Line 2"""
         lines,
         [
             "phase('Start')",
-            "_ = await agent('Run check', schema={'type': 'string'})",
+            "await agent('Run check', schema={'type': 'string'})",
         ],
     )
 

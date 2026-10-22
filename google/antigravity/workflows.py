@@ -422,21 +422,6 @@ def extract_workflow_source(
   if not body_nodes:
     raise WorkflowError("workflow function body cannot be empty")
 
-  # Assign a trailing expression statement (such as a final `workflows.phase` or
-  # unassigned `await workflows.agent(...)`) to `_` so the workflow runner does
-  # not treat it as a trailing expression and print its `repr` to stderr.
-  last_stmt = body_nodes[-1]
-  if isinstance(last_stmt, ast.Expr):
-    body_nodes[-1] = ast.copy_location(
-        ast.Assign(
-            targets=[
-                ast.copy_location(ast.Name(id="_", ctx=ast.Store()), last_stmt)
-            ],
-            value=last_stmt.value,
-        ),
-        last_stmt,
-    )
-
   body_module = ast.Module(body=body_nodes, type_ignores=[])
   stripper = _WorkflowQualifierStripper()
   transformed_module = stripper.visit(body_module)
