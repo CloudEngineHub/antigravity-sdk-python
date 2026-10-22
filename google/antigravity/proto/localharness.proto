@@ -914,4 +914,5 @@ message CompactionConfig {
   uint32 max_context_tokens = 3;
   string summary_prompt_override = 4;
   bool use_model_reported_token_count = 5;
+  bool include_last_user_message = 6;
 }
