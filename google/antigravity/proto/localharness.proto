@@ -322,7 +322,6 @@ message SkillsConfig {
   }
   bool enabled = 1 [default = true];
   repeated .antigravity.localharness.SkillSource skills = 2;
-  map<string, string> skill_versions = 3;
   .antigravity.localharness.SkillsConfig.PresentationMode presentation_mode = 4;
   string materialized_skills_dir = 5;
   repeated string preactivate_skills = 6;
