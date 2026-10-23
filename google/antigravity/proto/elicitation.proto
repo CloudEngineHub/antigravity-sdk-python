@@ -43,20 +43,20 @@ message MultipleChoiceResponse {
   .genai.ContentList user_input = 2;
 }
 message ElicitationCallStep {
+  string elicitation_id = 1;
+  .genai.ElicitationPreamble preamble = 2;
   oneof type {
     .genai.ConfirmationRequest confirmation_request = 3;
     .genai.MultipleChoiceRequest multiple_choice_request = 5;
   }
-  string elicitation_id = 1;
-  .genai.ElicitationPreamble preamble = 2;
   .google.protobuf.Duration timeout_duration = 4;
 }
 message ElicitationResultStep {
+  string elicitation_id = 1;
   oneof type {
     .genai.ContentList user_input = 2;
     .genai.UserTimeout user_timeout = 3;
     .genai.ConfirmationResponse confirmation = 4;
     .genai.MultipleChoiceResponse multiple_choice = 5;
   }
-  string elicitation_id = 1;
 }

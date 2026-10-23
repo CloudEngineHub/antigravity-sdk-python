@@ -35,6 +35,7 @@ message StepMetadata {
   .genai.StepMetadata.ContentStatus content_status = 1;
 }
 message Step {
+  string description = 16;
   oneof type {
     option (gaos.parsing.subtype_source) = true;
 
@@ -53,7 +54,6 @@ message Step {
     .genai.LegacyDocumentContent document = 9;
     .genai.LegacyVideoContent video = 10;
   }
-  string description = 16;
 }
 message ContentStep {
   string role = 1;
@@ -71,6 +71,8 @@ message CompactionStep {
   bytes signature = 1;
 }
 message ToolCallStep {
+  string id = 1;
+  bytes signature = 2;
   oneof type {
     option (gaos.parsing.subtype_source) = true;
 
@@ -90,10 +92,11 @@ message ToolCallStep {
     .genai.ProcessingCallStep processing_call = 18;
     .genai.SkillLookupCallStep skill_lookup_call = 19;
   }
-  string id = 1;
-  bytes signature = 2;
 }
 message ToolResultStep {
+  string call_id = 1;
+  bytes signature = 2;
+  string error = 20;
   oneof type {
     option (gaos.parsing.subtype_source) = true;
 
@@ -113,9 +116,6 @@ message ToolResultStep {
     .genai.ProcessingResultStep processing_result = 17;
     .genai.SkillLookupResultStep skill_lookup_result = 19;
   }
-  string call_id = 1;
-  bytes signature = 2;
-  string error = 20;
 }
 message FunctionCallStep {
   string name = 1;
@@ -234,51 +234,51 @@ message LegacyTextContent {
   repeated .genai.TextContent.Annotation annotations = 2;
 }
 message LegacyImageContent {
-  oneof data_or_uri {
-    bytes data = 2;
-    string uri = 3;
-  }
   .genai.ImageContent.MimeType mime_type = 1
       [json_name = "legacy_mime_type_enum"];
   string mime_type_string = 8;
-  .genai.MediaResolution resolution = 4;
-}
-message LegacyAudioContent {
   oneof data_or_uri {
     bytes data = 2;
     string uri = 3;
   }
+  .genai.MediaResolution resolution = 4;
+}
+message LegacyAudioContent {
   .genai.AudioContent.MimeType mime_type = 1
       [json_name = "legacy_mime_type_enum"];
   string mime_type_string = 11;
+  oneof data_or_uri {
+    bytes data = 2;
+    string uri = 3;
+  }
   int32 rate = 4;
   int32 channels = 5;
   int32 sample_rate = 6;
 }
 message LegacyDocumentContent {
-  oneof data_or_uri {
-    bytes data = 2;
-    string uri = 3;
-  }
   .genai.DocumentContent.MimeType mime_type = 1
       [json_name = "legacy_mime_type_enum"];
   string mime_type_string = 6;
-}
-message LegacyVideoContent {
   oneof data_or_uri {
     bytes data = 2;
     string uri = 3;
   }
+}
+message LegacyVideoContent {
+  .genai.VideoContent.MimeType mime_type = 1
+      [json_name = "legacy_mime_type_enum"];
+  string mime_type_string = 8;
+  oneof data_or_uri {
+    bytes data = 2;
+    string uri = 3;
+  }
+  .genai.MediaResolution resolution = 4;
   oneof processing {
     option (gaos.parsing.is_union) = true;
 
     .genai.VideoContent.Processing processing_type = 17;
     .genai.VideoContent.MediaProcessing processing_config = 18;
   }
-  .genai.VideoContent.MimeType mime_type = 1
-      [json_name = "legacy_mime_type_enum"];
-  string mime_type_string = 8;
-  .genai.MediaResolution resolution = 4;
   string name = 16;
 }
 message UserInputStep {
@@ -306,11 +306,11 @@ message ListDirectoryCallStep {
 }
 message ListDirectoryResultStep {
   message Entry {
+    string name = 1;
     oneof info {
       bool is_directory = 2;
       uint64 file_size = 3;
     }
-    string name = 1;
   }
   repeated .genai.ListDirectoryResultStep.Entry entries = 1;
 }

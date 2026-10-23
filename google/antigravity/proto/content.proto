@@ -58,6 +58,8 @@ message SpeechAnnotation {
 }
 message TextContent {
   message Annotation {
+    int32 start_index = 1;
+    int32 end_index = 2;
     oneof type {
       option (gaos.parsing.subtype_source) = true;
 
@@ -67,8 +69,6 @@ message TextContent {
       .genai.WordInfo word_info = 8;
       .genai.SpeechAnnotation speech_metadata = 11;
     }
-    int32 start_index = 1;
-    int32 end_index = 2;
   }
   string text = 3;
   repeated .genai.TextContent.Annotation annotations = 4;
@@ -89,13 +89,13 @@ message ImageContent {
     TYPE_VIDEO_JPEG2000 = 11
         [(gaos.parsing.enum_value_name) = "video/jpeg2000"];
   }
+  .genai.ImageContent.MimeType mime_type = 1
+      [json_name = "legacy_mime_type_enum"];
+  string mime_type_string = 8;
   oneof data_or_uri {
     bytes data = 2;
     string uri = 6;
   }
-  .genai.ImageContent.MimeType mime_type = 1
-      [json_name = "legacy_mime_type_enum"];
-  string mime_type_string = 8;
   .genai.MediaResolution resolution = 5;
 }
 message AudioContent {
@@ -118,13 +118,13 @@ message AudioContent {
         [(gaos.parsing.enum_value_name) = "video/audio/s16le"];
     TYPE_WEBM = 15 [(gaos.parsing.enum_value_name) = "audio/webm"];
   }
+  .genai.AudioContent.MimeType mime_type = 1
+      [json_name = "legacy_mime_type_enum"];
+  string mime_type_string = 11;
   oneof data_or_uri {
     bytes data = 2;
     string uri = 5;
   }
-  .genai.AudioContent.MimeType mime_type = 1
-      [json_name = "legacy_mime_type_enum"];
-  string mime_type_string = 11;
   int32 channels = 7;
   int32 sample_rate = 8;
 }
@@ -134,13 +134,13 @@ message DocumentContent {
     TYPE_PDF = 1 [(gaos.parsing.enum_value_name) = "application/pdf"];
     TYPE_CSV = 2 [(gaos.parsing.enum_value_name) = "text/csv"];
   }
+  .genai.DocumentContent.MimeType mime_type = 1
+      [json_name = "legacy_mime_type_enum"];
+  string mime_type_string = 6;
   oneof data_or_uri {
     bytes data = 2;
     string uri = 5;
   }
-  .genai.DocumentContent.MimeType mime_type = 1
-      [json_name = "legacy_mime_type_enum"];
-  string mime_type_string = 6;
 }
 message VideoContent {
   message StaticMediaProcessing {
@@ -175,20 +175,20 @@ message VideoContent {
     STATIC = 1;
     AGENTIC = 2;
   }
+  .genai.VideoContent.MimeType mime_type = 1
+      [json_name = "legacy_mime_type_enum"];
+  string mime_type_string = 8;
   oneof data_or_uri {
     bytes data = 2;
     string uri = 6;
   }
+  .genai.MediaResolution resolution = 5;
   oneof processing {
     option (gaos.parsing.is_union) = true;
 
     .genai.VideoContent.Processing processing_type = 17;
     .genai.VideoContent.MediaProcessing processing_config = 18;
   }
-  .genai.VideoContent.MimeType mime_type = 1
-      [json_name = "legacy_mime_type_enum"];
-  string mime_type_string = 8;
-  .genai.MediaResolution resolution = 5;
   string name = 16;
 }
 message UrlCitation {
@@ -266,13 +266,13 @@ message ThoughtSummaryContent {
   }
 }
 message Turn {
+  string role = 1;
   oneof content {
     option (gaos.parsing.is_union) = true;
 
     .genai.ContentList content_list = 3;
     string content_string = 4;
   }
-  string role = 1;
 }
 message TurnList {
   option (gaos.parsing.message_json_type) = JSON_TYPE_ARRAY;
@@ -280,6 +280,8 @@ message TurnList {
   repeated .genai.Turn turns = 1;
 }
 message ToolCallContent {
+  string id = 1;
+  bytes signature = 9;
   oneof type {
     option (gaos.parsing.subtype_source) = true;
 
@@ -291,10 +293,10 @@ message ToolCallContent {
     .genai.FileSearchCallContent file_search_call = 8;
     .genai.GoogleMapsCallContent google_maps_call = 10;
   }
-  string id = 1;
-  bytes signature = 9;
 }
 message ToolResultContent {
+  string call_id = 8;
+  bytes signature = 9;
   oneof type {
     option (gaos.parsing.subtype_source) = true;
 
@@ -306,14 +308,14 @@ message ToolResultContent {
     .genai.FileSearchResultContent file_search_result = 7;
     .genai.GoogleMapsResultContent google_maps_result = 10;
   }
-  string call_id = 8;
-  bytes signature = 9;
 }
 message FunctionCallContent {
   string name = 3;
   .genai.Struct arguments = 4;
 }
 message FunctionResultContent {
+  string name = 8;
+  bool is_error = 2;
   oneof result {
     option (gaos.parsing.is_union) = true;
     option (gaos.parsing.is_required) = true;
@@ -322,8 +324,6 @@ message FunctionResultContent {
     .genai.FunctionResultSubcontentList content_list = 9;
     string string_result = 7;
   }
-  string name = 8;
-  bool is_error = 2;
 }
 message CodeExecutionCallContent {
   message CodeExecutionCallArguments {
@@ -369,6 +369,8 @@ message McpServerToolCallContent {
   .genai.Struct arguments = 3;
 }
 message McpServerToolResultContent {
+  string name = 1;
+  string server_name = 2;
   oneof result {
     option (gaos.parsing.is_union) = true;
     option (gaos.parsing.is_required) = true;
@@ -377,8 +379,6 @@ message McpServerToolResultContent {
     .genai.FunctionResultSubcontentList content_list = 6;
     string string_result = 4;
   }
-  string name = 1;
-  string server_name = 2;
 }
 message GoogleSearchCallContent {
   message GoogleSearchCallArguments {

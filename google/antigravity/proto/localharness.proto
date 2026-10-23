@@ -164,14 +164,14 @@ message VertexEndpoint {
   string api_key = 6;
 }
 message ModelConfig {
+  string name = 1;
+  repeated .antigravity.localharness.ModelType types = 2;
   oneof endpoint {
     .antigravity.localharness.GeminiAPIEndpoint gemini_api_endpoint = 3;
     .antigravity.localharness.VertexEndpoint vertex_endpoint = 4;
     .antigravity.localharness.GemmaEndpoint gemma_endpoint = 6;
     .antigravity.localharness.CustomEndpoint custom_endpoint = 7;
   }
-  string name = 1;
-  repeated .antigravity.localharness.ModelType types = 2;
 }
 message GemmaEndpoint {
   string base_url = 1;
@@ -346,6 +346,8 @@ message OutputConfig {
   string api_key = 2;
 }
 message OutputEvent {
+  int64 seq_num = 1;
+  int64 timestamp_micros = 2;
   oneof event {
     .antigravity.localharness.StepUpdate step_update = 10;
     .antigravity.localharness.TrajectoryStateUpdate trajectory_state_update =
@@ -359,8 +361,6 @@ message OutputEvent {
         16;
     .antigravity.localharness.UsageUpdate usage_update = 17;
   }
-  int64 seq_num = 1;
-  int64 timestamp_micros = 2;
 }
 message SandboxStatus {
   bool available = 1;
@@ -455,11 +455,11 @@ message ActionError {
 }
 message ActionListDirectory {
   message Result {
+    string name = 1;
     oneof info {
       bool is_directory = 2;
       uint64 file_size = 3;
     }
-    string name = 1;
   }
   string directory_path = 1;
   repeated .antigravity.localharness.ActionListDirectory.Result results = 2;
@@ -618,13 +618,13 @@ message UserQuestionsResponse {
   message QuestionsResponse {
     repeated .antigravity.localharness.UserQuestionAnswer answers = 1;
   }
+  string trajectory_id = 1;
+  uint32 step_index = 2;
   oneof result {
     bool cancelled = 3;
     .antigravity.localharness.UserQuestionsResponse.QuestionsResponse response =
         4;
   }
-  string trajectory_id = 1;
-  uint32 step_index = 2;
 }
 message UserQuestionAnswer {
   oneof answer {
@@ -666,11 +666,11 @@ message McpServerConfig {
     AUTH_PROVIDER_TYPE_UNSPECIFIED = 0;
     AUTH_PROVIDER_TYPE_GOOGLE_CREDENTIALS = 1;
   }
+  string name = 1;
   oneof transport {
     .antigravity.localharness.McpStdioTransport stdio = 2;
     .antigravity.localharness.McpHttpTransport http = 3;
   }
-  string name = 1;
   repeated string enabled_tools = 4;
   repeated string disabled_tools = 5;
   .antigravity.localharness.McpServerConfig.AuthProviderType
@@ -715,6 +715,10 @@ message ActionRunWorkflow {
   string script = 4;
 }
 message CallHookRequest {
+  string request_id = 1;
+  string name = 2;
+  .antigravity.localharness.LifecycleHook type = 7;
+  string client_id = 11;
   oneof args {
     .antigravity.localharness.PreTurnArgs pre_turn_args = 3;
     .antigravity.localharness.PostTurnArgs post_turn_args = 4;
@@ -724,12 +728,9 @@ message CallHookRequest {
     .antigravity.localharness.OnCompactionArgs on_compaction_args = 9;
     .antigravity.localharness.StopArgs stop_args = 10;
   }
-  string request_id = 1;
-  string name = 2;
-  .antigravity.localharness.LifecycleHook type = 7;
-  string client_id = 11;
 }
 message CallHookResponse {
+  string request_id = 1;
   oneof result {
     .antigravity.localharness.PreTurnResult pre_turn_result = 2;
     .antigravity.localharness.PreToolResult pre_tool_result = 3;
@@ -738,7 +739,6 @@ message CallHookResponse {
     .antigravity.localharness.OnToolErrorResult on_tool_error_result = 6;
     .antigravity.localharness.StopResult stop_result = 7;
   }
-  string request_id = 1;
 }
 message PreToolArgs {
   string tool_name = 1;
