@@ -234,6 +234,7 @@ message Tool {
   string parameters_json_schema = 3;
   string response_json_schema = 4;
   bool defer_loading = 5;
+  .antigravity.localharness.ToolOutputTruncation tool_output_truncation = 8;
   extensions 1000 to 1999;
   extensions 2000 to max;
 }
