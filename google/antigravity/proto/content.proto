@@ -432,6 +432,7 @@ message FunctionResultSubcontent {
 
     .genai.TextContent text = 1;
     .genai.ImageContent image = 2;
+    .genai.VideoContent video = 4;
   }
 }
 message FunctionResultSubcontentList {
