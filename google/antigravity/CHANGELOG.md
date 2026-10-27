@@ -7,6 +7,56 @@ All notable changes to the Google Antigravity Python SDK will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.23] - 2026-10-26
+
+Google Antigravity Python SDK v0.1.23 expands dynamic workflow orchestration with programmatic tool execution, reusable multi-turn workflow agents, and structured workflow input arguments, while adding multi-turn conversation caching for local LiteRT models and custom section titles for replacement system instructions. This release also improves OpenAPI/JSON Schema metadata preservation, deterministic tool path normalization, media home-directory expansion, and workflow JSON-RPC stream resilience.
+
+### 🌟 Key Highlights
+- **Programmatic Tool Execution, Multi-Turn Agents & Workflow Args (`beta.workflows`)**: Execute built-in and custom tools programmatically via `beta.workflows.call_tool`, run stateful multi-turn workflow agents with `WorkflowAgent` (`beta.workflows.agent`), and pass structured runtime inputs via `beta.workflows.args` and `agent.beta.run_workflow(..., args=...)`.
+  ```python
+  from google.antigravity import beta
+
+  @beta.workflows.define
+  async def audit_workflow():
+      src = await beta.workflows.call_tool(
+          "read_file", path=beta.workflows.args.get("file", "main.py")
+      )
+      reviewer = beta.workflows.agent("Audit code", role="Auditor")
+      beta.workflows.log(await reviewer(src, schema={"type": "string"}))
+  ```
+
+- **Multi-Turn Conversation Caching (`LiteRTAgentConfig`)**: Enable multi-turn conversation caching and KV cache reuse in `LiteRTAgentConfig`'s local loopback server to reduce latency and resource overhead across consecutive model turns and tool calls.
+  ```python
+  from google.antigravity import LiteRTAgentConfig
+
+  config = LiteRTAgentConfig(
+      model_path="models/gemma-4b.litertlm",
+  )
+  ```
+
+- **Custom System Instruction Section Titles (`CustomSystemInstructions`)**: Configure an optional `title` on `CustomSystemInstructions` to render custom prompt instructions under dedicated `<title>` XML tags rather than the generic `<System>` section.
+  ```python
+  from google.antigravity import CustomSystemInstructions, LocalAgentConfig
+
+  config = LocalAgentConfig(
+      system_instructions=CustomSystemInstructions(
+          title="SecurityPolicy",
+          text="Never expose credentials or API keys in responses.",
+      )
+  )
+  ```
+
+### 📋 Detailed Changes
+
+- **Features & Enhancements**
+  - **Tool Schemas**: Preserved literal metadata fields (`title`, `description`, `summary`, `format`, `pattern`) without altering type-like strings and added `read_only` (`readOnly`) and `write_only` (`writeOnly`) OpenAPI/JSON Schema keyword mappings.
+  - **Tool Execution & Argument Normalization**: Stripped injected `ToolContext` parameters from public callable annotations in `ToolRunner`, cached callable signatures in `_coerce_args`, and normalized wire tool path arguments and `canonical_path` in a single deterministic pass.
+  - **Tool Responses**: Serialized custom tool JSON responses without ASCII escaping (`ensure_ascii=False`) so non-ASCII UTF-8 text is delivered to the model unescaped.
+  - **Media Loaders & MIME Validation**: Expanded user home directory (`~`) prefixes in `from_file` media loaders and normalized MIME type strings via case-insensitive, whitespace-trimmed validation.
+
+- **Bug Fixes**
+  - **Workflow Execution & Validation**: Prevented `stderr` output from corrupting workflow JSON-RPC streams, rejected `print()` calls during `@beta.workflows.define` AST validation while preserving trailing expression nodes, generalized temporary workflow script materialization fallback across read-only workspace mounts, and fixed `ToolExecutionError` argument ordering in `Agent.run_workflow`.
+
 ## [0.1.22] - 2026-10-12
 
 Google Antigravity Python SDK v0.1.22 introduces beta support for dynamic workflow orchestration, in-memory skill definitions, and configurable per-step output token limits for extended model decodes. This release also standardizes subagent invocation naming on `BuiltinTools.INVOKE_SUBAGENT` and provides fine-grained controls over MCP tool payload limits and eager tool registration.
