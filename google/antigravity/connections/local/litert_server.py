@@ -224,6 +224,26 @@ def _build_assistant_message(
   )
 
 
+def _extract_litert_fields(payload: Any) -> tuple[str, str, list[Any]]:
+  """Extracts text, thought reasoning, and tool calls from a LiteRT message dict."""
+  text_output = ""
+  reasoning_output = ""
+  tool_calls: list[Any] = []
+  if isinstance(payload, dict):
+    channels = payload.get("channels", {})
+    if isinstance(channels, dict):
+      thought = channels.get("thought", "")
+      if isinstance(thought, str):
+        reasoning_output = thought
+    text_output = "".join(
+        item.get("text", "")
+        for item in payload.get("content", [])
+        if isinstance(item, dict) and item.get("type") == "text"
+    )
+    tool_calls = payload.get("tool_calls", [])
+  return text_output, reasoning_output, tool_calls
+
+
 def _make_conversation_cache_key(
     messages: list[Any],
     tools: list[Any] | None,
@@ -528,21 +548,16 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
     all_tool_calls: list[dict[str, Any]] = []
     # Yield content delta stream
     for chunk in conv.send_message_async(prompt):
-      text_output = ""
-      tool_calls = []
-      if isinstance(chunk, dict):
-        text_output = "".join(
-            item.get("text", "")
-            for item in chunk.get("content", [])
-            if isinstance(item, dict) and item.get("type") == "text"
-        )
-        tool_calls = chunk.get("tool_calls", [])
+      text_output, reasoning_output, tool_calls = _extract_litert_fields(chunk)
 
       if text_output:
         text_parts.append(text_output)
 
-      if text_output or tool_calls:
-        delta = {}
+      if text_output or reasoning_output or tool_calls:
+        delta: dict[str, Any] = {}
+        if reasoning_output:
+          delta["reasoning"] = reasoning_output
+          delta["reasoning_content"] = reasoning_output
         if text_output:
           delta["content"] = text_output
         if tool_calls:
@@ -591,15 +606,7 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
   def _handle_synchronous(self, conv: Any, prompt: Any, model_name: str) -> Any:
     """Handles synchronous completions and returns raw JSON payload response."""
     response = conv.send_message(prompt)
-    text_output = ""
-    tool_calls = []
-    if isinstance(response, dict):
-      text_output = "".join(
-          item.get("text", "")
-          for item in response.get("content", [])
-          if isinstance(item, dict) and item.get("type") == "text"
-      )
-      tool_calls = response.get("tool_calls", [])
+    text_output, reasoning_output, tool_calls = _extract_litert_fields(response)
 
     now_str = str(int(time.time()))
     openai_tool_calls = [
@@ -613,6 +620,9 @@ class LiteRTOpenAIHandler(http.server.BaseHTTPRequestHandler):
         "role": "assistant",
         "content": text_output or None,
     }
+    if reasoning_output:
+      message_payload["reasoning"] = reasoning_output
+      message_payload["reasoning_content"] = reasoning_output
     if openai_tool_calls:
       message_payload["tool_calls"] = openai_tool_calls
       if not text_output:

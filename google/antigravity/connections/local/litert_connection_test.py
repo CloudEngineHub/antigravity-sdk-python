@@ -2067,6 +2067,122 @@ class LiteRTConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertTrue(cached_conv.exited)
     self.assertIsNone(strategy._openai_server)
 
+  @mock.patch("os.path.exists", return_value=True)
+  @mock.patch("subprocess.Popen")
+  @mock.patch.object(
+      local_connection.LocalConnectionStrategy,
+      "__aenter__",
+      return_value=None,
+  )
+  async def test_thought_channel_streaming_and_sync_with_cache_reuse(
+      self, mock_super_enter, mock_popen, mock_exists
+  ):
+    """Verify thought channel is emitted as reasoning and reasoning_content."""
+    del mock_super_enter, mock_exists
+    mock_popen.return_value = mock.MagicMock()
+    config = litert_connection_config.LiteRTAgentConfig(
+        model_path="/tmp/model.litertlm",
+        backend=litert_connection_config.LiteRTBackend.CPU,
+    )
+    strategy = config.create_strategy(
+        tool_runner=mock.MagicMock(),
+        hook_runner=mock.MagicMock(),
+    )
+    await strategy.__aenter__()
+    self.addAsyncCleanup(strategy.__aexit__, None, None, None)
+
+    engine = strategy._engine
+    warmup_conv_count = len(engine.conversations)
+
+    def _inject_thought_chunks(messages=None, tools=None, **kwargs):
+      conv = MockConversation(messages, tools, **kwargs)
+      conv.simulated_async_response = [
+          {"channels": {"thought": "Step 1: analyze riddle. "}},
+          {"channels": {"thought": "Step 2: wind -> echo."}},
+          {"content": [{"type": "text", "text": "An echo."}]},
+      ]
+      conv.simulated_response = {
+          "channels": {"thought": "Sync reasoning."},
+          "content": [{"type": "text", "text": "Sync answer."}],
+      }
+      engine.conversations.append(conv)
+      return conv
+
+    # 1. Turn 1 (Streaming): Verify reasoning and content deltas.
+    t1_payload = {
+        "model": "model.litertlm",
+        "messages": [{"role": "user", "content": "Solve this riddle"}],
+        "stream": True,
+    }
+    req1 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t1_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    reasoning_deltas = []
+    reasoning_content_deltas = []
+    content_deltas = []
+    with mock.patch.object(
+        engine, "create_conversation", side_effect=_inject_thought_chunks
+    ):
+      with _urlopen_no_proxy(req1) as r:
+        self.assertEqual(r.status, 200)
+        while True:
+          line = r.readline().decode("utf-8")
+          if not line or "[DONE]" in line:
+            break
+          if line.startswith("data: "):
+            chunk_data = json.loads(line[6:].strip())
+            choices = chunk_data.get("choices", [])
+            if choices:
+              delta = choices[0].get("delta", {})
+              if "reasoning" in delta:
+                reasoning_deltas.append(delta["reasoning"])
+              if "reasoning_content" in delta:
+                reasoning_content_deltas.append(delta["reasoning_content"])
+              if "content" in delta:
+                content_deltas.append(delta["content"])
+
+    self.assertEqual(
+        "".join(reasoning_deltas),
+        "Step 1: analyze riddle. Step 2: wind -> echo.",
+    )
+    self.assertEqual(
+        "".join(reasoning_content_deltas),
+        "Step 1: analyze riddle. Step 2: wind -> echo.",
+    )
+    self.assertEqual("".join(content_deltas), "An echo.")
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    turn1_conv = engine.conversations[-1]
+
+    # 2. Turn 2 (Synchronous): Verify cache hit and sync reasoning fields.
+    t2_payload = {
+        "model": "model.litertlm",
+        "messages": [
+            {"role": "user", "content": "Solve this riddle"},
+            {"role": "assistant", "content": "An echo."},
+            {"role": "user", "content": "Are you sure?"},
+        ],
+        "stream": False,
+    }
+    req2 = urllib.request.Request(
+        f"{strategy._openai_server_url}/v1/chat/completions",
+        data=json.dumps(t2_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with _urlopen_no_proxy(req2) as r:
+      self.assertEqual(r.status, 200)
+      data2 = json.loads(r.read().decode("utf-8"))
+      msg2 = data2["choices"][0]["message"]
+      self.assertEqual(msg2["reasoning"], "Sync reasoning.")
+      self.assertEqual(msg2["reasoning_content"], "Sync reasoning.")
+      self.assertEqual(msg2["content"], "Sync answer.")
+
+    # Must have reused turn1_conv
+    self.assertEqual(len(engine.conversations), warmup_conv_count + 1)
+    self.assertFalse(turn1_conv.exited)
+    self.assertEqual(len(turn1_conv.sent_prompts), 2)
+
 
 class DeriveLiteRTCompactionConfigTest(unittest.TestCase):
 
